@@ -15,5 +15,8 @@
   "bugs": {
     "url": "https://github.com/gcode-3d/gcode-parser/issues"
   },
-  "homepage": "https://github.com/gcode-3d/gcode-parser#readme"
+  "homepage": "https://github.com/gcode-3d/gcode-parser#readme",
+  "dependencies": {
+    "serialport": "^9.0.4"
+  }
 }
