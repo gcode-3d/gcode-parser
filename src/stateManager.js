@@ -1,11 +1,12 @@
 const globals = require("./globals")
 const SerialConnectionManager = require("./serial")
+const Webserver = require("./webserver")
 
 module.exports = class Manager {
-    #state
     constructor() {
-        this.#state = globals.CONNECTIONSTATE.DISCONNECTED
+        this.state = globals.CONNECTIONSTATE.DISCONNECTED
         this.printers = new Map()
-        this.connectionManager = new SerialConnectionManager()
+        this.connectionManager = new SerialConnectionManager(this)
+        this.webserver = new Webserver()
     }
 }

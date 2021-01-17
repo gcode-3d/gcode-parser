@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>online terminal :)</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bulma/0.9.1/css/bulma.css" />
+	<link href="/files/style/index.css" rel="stylesheet" />
+</head>
+
+<body>
+	<div class="container">
+		<h1 class="title" id="status">Connection is closed</h1>
+		<textarea class="textarea" id="terminal"></textarea>
+		<input class="input" id="inputTerminal" type="text" placeholder="Sending command" />
+		<button class="button is-success" id="sendButton">Send</button>
+		<label class="checkbox">
+			<input type="checkbox" id="autoscroll" /> Enable autoscroll
+		</label>
+	</div>
+
+	<script src=" /files/js/ws.js"></script>
+
+
+</body>
+
+</html>

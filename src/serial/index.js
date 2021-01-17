@@ -8,69 +8,109 @@ class SerialConnectionManager {
         this.config = {}
     }
 
-    #create(path, baudrate) {
-        new Promise(function (resolve, reject) {})
+    openConnection(path, baudRate) {
+        console.log("Opening connection")
+        this.connection = new SerialPort(path, { baudRate })
+        this.connection.writeDrain = function (data, callback) {
+            this.connection.write(data)
+            this.connection.drain(callback)
+        }.bind(this)
+        this.connection.on("open", this.handleOpen.bind(this))
+        this.connection.on("error", function () {}.bind(this))
     }
 
-    #getBaudrate(path) {
-        return new Promise(
-            function (resolve, reject) {
-                try {
-                    globals.BAUD.map((br) => () =>
-                        this.#returnBaudratePromise(path, br)
-                    ).reduce(
-                        (promise, func) =>
-                            promise.then((result) =>
-                                func().then(Array.prototype.concat.bind(result))
-                            ),
-                        Promise.resolve([])
-                    )
-                } catch (e) {
-                    reject(e)
+    handleOpen() {
+        this.connection.flush()
+        this.stateManager.webserver.registerHandler(
+            function (message) {
+                console.log("message", message)
+                if (this.connection.isOpen) {
+                    this.connection.writeDrain("\n" + message + "\n")
+                    this.connection.writeDrain("\n")
                 }
+            }.bind(this)
+        )
+        this.connection.on(
+            "data",
+            function (data) {
+                let string = data.toString().trim()
+                this.stateManager.webserver.sendToClients(string)
             }.bind(this)
         )
     }
 
-    #returnBaudratePromise(path, baudRate) {
+    getBaudrate(path) {
+        return new Promise(
+            async function (resolve) {
+                let resultBaudrate = 0
+                for (let baudrate of GLOBALS.BAUD.slice(0)) {
+                    if (resultBaudrate != 0) {
+                        break
+                    }
+                    const result = await this.returnBaudratePromise(
+                        path,
+                        baudrate
+                    )
+                    if (result == true) {
+                        resultBaudrate = baudrate
+                    }
+                }
+                resolve(resultBaudrate == 0 ? false : resultBaudrate)
+            }.bind(this)
+        )
+    }
+
+    returnBaudratePromise(path, baudRate) {
         console.log(`attempt: ${path} - ${baudRate}`)
         return new Promise(
             function (resolve) {
                 try {
+                    let isWorking = false
+                    let timeout = setTimeout(function () {
+                        connection.close(() => {
+                            resolve(isWorking)
+                        })
+                    }, 4000)
                     const connection = new SerialPort(path, {
                         baudRate,
                         autoOpen: false,
                     })
-                    // const testString = makeString(50)
-                    const testString = "G28"
 
                     connection.on("open", function () {
-                        console.log("open")
-
+                        connection.flush()
                         connection.on("data", function (data) {
-                            console.log("data")
-                            console.log(data)
-                        })
-                        connection.on("drain", function (drain) {
-                            console.log("drain")
-                            console.log(drain)
-                        })
-                        connection.on("readable", function () {
-                            console.log("data: ", connection.read())
+                            if (
+                                data
+                                    .toString()
+                                    .trim()
+                                    .startsWith("FIRMWARE_NAME:")
+                            ) {
+                                isWorking = true
+                                clearTimeout(timeout)
+                                connection.close(() => {
+                                    resolve(isWorking)
+                                })
+                            }
                         })
 
-                        setInterval(function () {
-                            connection.write("N0 M110 N0*125")
-                            console.log(connection.read())
+                        setTimeout(function () {
+                            connection.write("\nM115\n", function () {
+                                connection.drain()
+                            })
                         }, 500)
                     })
                     connection.on("error", function (error) {
-                        console.log("error")
-                        console.log(error)
+                        console.error(error)
+                        isWorking = false
                     })
                     connection.open()
                 } catch (e) {
                     console.error(e)
+                    isWorking = false
+                    clearTimeout(timeout)
+                    connection.close(() => {
+                        resolve(isWorking)
+                    })
                 }
             }.bind(this)
         )
@@ -80,11 +120,14 @@ class SerialConnectionManager {
         return new Promise(
             function (resolve, reject) {
                 if (!baudrate) {
-                    this.#getBaudrate(path).then((baudrate) => {
-                        this.#create(path, baudrate).then(resolve).catch(reject)
+                    this.getBaudrate(path).then((baudrate) => {
+                        if (baudrate === false) {
+                            return reject("No baudrate combination worked.")
+                        }
+                        resolve(this.openConnection(path, baudrate))
                     })
                 } else {
-                    this.#create(path, baudrate).then(resolve).catch(reject)
+                    resolve(this.openConnection(path, baudrate))
                 }
             }.bind(this)
         )

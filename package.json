@@ -17,6 +17,8 @@
   },
   "homepage": "https://github.com/gcode-3d/gcode-parser#readme",
   "dependencies": {
-    "serialport": "^9.0.4"
+    "express": "^4.17.1",
+    "serialport": "^9.0.4",
+    "ws": "^7.4.2"
   }
 }
