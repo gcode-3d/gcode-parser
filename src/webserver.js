@@ -1,11 +1,12 @@
 const express = require("express")
+const { v4: uuid } = require("uuid")
 const WebSocket = require("ws")
 const path = require("path")
 
 module.exports = class Webserver {
-    constructor() {
+    constructor(stateManager) {
         this.app = express()
-
+        this.stateManager = stateManager
         this.setupRoutes()
         this.server = this.app.listen(8080)
         this.handlers = []
@@ -36,7 +37,17 @@ module.exports = class Webserver {
         wss.on(
             "connection",
             function (socket) {
+                socket.sendJSON = function (json) {
+                    socket.send(JSON.stringify(json))
+                }
+                socket.id = uuid()
                 console.log("[WS][Event] Connection opened with " + socket.id)
+
+                const currentState = this.stateManager.getCurrentStateInfo()
+                socket.sendJSON({
+                    type: "ready",
+                    content: currentState,
+                })
                 socket.on(
                     "message",
                     function (data) {
@@ -55,9 +66,20 @@ module.exports = class Webserver {
         })
         return wss
     }
-    sendToClients(content) {
+    sendTemperatureToClients(data) {
         this.wss.clients.forEach(function (socket) {
-            socket.send(content)
+            socket.sendJSON({
+                type: "temperature_change",
+                data,
+            })
+        })
+    }
+    sendMessageToClients(data) {
+        this.wss.clients.forEach(function (socket) {
+            socket.sendJSON({
+                type: "message_receive",
+                data,
+            })
         })
     }
 }
