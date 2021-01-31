@@ -1,2 +1,4 @@
 node_modules/
 src/stateManager.js
+config.json
+storage.db

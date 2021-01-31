@@ -3,12 +3,15 @@ const SerialConnectionManager = require("./serial")
 const Webserver = require("./webserver")
 const Parser = require("./parser/")
 const Printer = require("./serial/printer.js")
+const Storage = require("./storage")
 const printerProfile = require("../printerProfile.json")
 
 module.exports = class Manager {
     constructor() {
         this.state = globals.CONNECTIONSTATE.DISCONNECTED
+        this.config = require("../config.json")
         this.printer = null
+        this.storage = new Storage()
         this.connectionManager = new SerialConnectionManager(this)
         this.parser = new Parser(this)
         this.webserver = new Webserver(this)

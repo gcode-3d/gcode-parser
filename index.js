@@ -3,14 +3,18 @@ const stateManager = require("./src/stateManager.js")
 
 const currentState = new stateManager()
 
+// Find initial printers on boot.
 currentState.connectionManager
     .list()
     .then((list) => {
-        var product = list.filter((i) => {
+        var printers = list.filter((i) => {
             return i["manufacturer"] == "wch.cn"
-        })[0]
+        })
+        if (printers.length == 0) {
+            return console.log("No printers found")
+        }
 
-        currentState.connectionManager.create(product.path)
+        currentState.connectionManager.create(printers[0].path)
     })
     .catch((e) => {
         console.error(e)
