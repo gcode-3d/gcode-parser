@@ -18,6 +18,9 @@ module.exports = class Storage {
             this.db.run(
                 "CREATE TABLE IF NOT EXISTS  tokens (username varchar(30) not null,token varchar(50) not null primary key,expire datetime, foreign key (username) REFERENCES users(username))"
             )
+            this.db.run(
+                "CREATE TABLE IF NOT EXISTS devices (name varchar(255) PRIMARY KEY, path varchar(255) not null, width integer(4) not null, depth integer(4) not null, height integer(4) not null, baud varchar(10) not null default 'Auto' )"
+            )
         })
     }
 
@@ -84,12 +87,55 @@ module.exports = class Storage {
                         return resolve(false)
                     }
                 }
-                console.log(row)
                 return resolve({
                     username: row.username,
                     expire: new Date(row.expire),
                     permissions: new Permissions(row.permissions),
                 })
+            })
+        })
+    }
+
+    listDeviceConfigNames() {
+        return new Promise((resolve, reject) => {
+            var statement = this.db.prepare("select name from devices")
+            statement.all((err, rows) => {
+                if (err) {
+                    return reject(err)
+                }
+                return resolve(rows)
+            })
+        })
+    }
+    listDevices() {
+        return new Promise((resolve, reject) => {
+            var statement = this.db.prepare("select * from devices")
+            statement.all((err, rows) => {
+                if (err) {
+                    return reject(err)
+                }
+                return resolve(rows)
+            })
+        })
+    }
+
+    saveDevice(name, width, depth, height, path, baud) {
+        return new Promise((resolve, reject) => {
+            var statement = this.db.prepare(
+                "insert into devices (name, width, depth, height, path, baud) values (?, ?, ?, ?, ?, ?)",
+                name,
+                width,
+                depth,
+                height,
+                path,
+                baud
+            )
+            statement.run((err, r) => {
+                if (err) {
+                    return reject(err)
+                }
+                console.log(r)
+                return resolve()
             })
         })
     }

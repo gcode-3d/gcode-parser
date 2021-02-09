@@ -26,7 +26,6 @@ module.exports = class Permissions {
         this.reversedBinary.forEach((value, index) => {
             permissions[this.permissions[index]] = value == "1" ? true : false
         })
-        console.log(permissions)
         return permissions
     }
 }

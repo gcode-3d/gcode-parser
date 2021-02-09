@@ -5,11 +5,12 @@ const Readline = require("@serialport/parser-readline")
 class SerialConnectionManager {
     constructor(stateManager) {
         this.stateManager = stateManager
-        this.config = {}
+        // this.config = this.stateManager.storage.
         this.lastCommand = {
             code: null,
             responses: [],
         }
+        this.connection = null
     }
 
     openConnection(path, baudRate) {
@@ -27,12 +28,13 @@ class SerialConnectionManager {
         this.connection.on(
             "error",
             function (e) {
+                console.error(e)
                 this.stateManager.updateState(globals.CONNECTIONSTATE.ERRORED, {
                     errorInfo: "Connectection errored, \n" + e,
                 })
-                this.connection.close()
             }.bind(this)
         )
+        return this.connection
     }
     send(message) {
         this.connection.writeDrain("\n" + message + "\n")
@@ -119,6 +121,39 @@ class SerialConnectionManager {
         )
     }
 
+    testConnection(path, baudRate) {
+        return new Promise((resolve, reject) => {
+            const connection = new SerialPort(path, {
+                baudRate,
+                autoOpen: false,
+            })
+            const parser = connection.pipe(new Readline())
+            connection.on("open", function () {
+                connection.flush()
+
+                connection.on("data", function (data) {
+                    if (data.toString().trim().startsWith("FIRMWARE_NAME:")) {
+                        resolve(true)
+                    }
+                })
+                parser.on("data", function (data) {
+                    responses.push(data)
+                })
+
+                setTimeout(function () {
+                    connection.write("\nM115\n", function () {
+                        connection.drain()
+                    })
+                }, 500)
+            })
+            connection.on("error", function (error) {
+                console.error(error)
+                reject(error)
+            })
+            connection.open()
+        })
+    }
+
     returnBaudratePromise(path, baudRate) {
         console.log(`attempt: ${path} - ${baudRate}`)
         return new Promise(
@@ -126,6 +161,10 @@ class SerialConnectionManager {
                 try {
                     let isWorking = false
                     const responses = []
+                    const connection = new SerialPort(path, {
+                        baudRate,
+                        autoOpen: false,
+                    })
                     setTimeout(function () {
                         connection.close(() => {
                             resolve({
@@ -134,10 +173,7 @@ class SerialConnectionManager {
                             })
                         })
                     }, 2000)
-                    const connection = new SerialPort(path, {
-                        baudRate,
-                        autoOpen: false,
-                    })
+
                     const parser = connection.pipe(new Readline())
                     connection.on("open", function () {
                         connection.flush()
