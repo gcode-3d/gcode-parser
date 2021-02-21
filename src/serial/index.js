@@ -29,8 +29,9 @@ class SerialConnectionManager {
             "error",
             function (e) {
                 console.error(e)
+
                 this.stateManager.updateState(globals.CONNECTIONSTATE.ERRORED, {
-                    errorInfo: "Connectection errored, \n" + e,
+                    errorDescription: e.message,
                 })
             }.bind(this)
         )

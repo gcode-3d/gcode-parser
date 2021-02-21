@@ -43,9 +43,7 @@ module.exports = class Manager {
             case globals.CONNECTIONSTATE.ERRORED:
                 return {
                     state: "Errored",
-                    description: this.additionalStateInfo.errorDescription
-                        ? this.additionalStateInfo.errorDescription
-                        : null,
+                    description: this.additionalStateInfo.errorDescription,
                 }
             case globals.CONNECTIONSTATE.PREPARING:
                 return {
@@ -67,11 +65,12 @@ module.exports = class Manager {
 
     updateState(state, extraDescription) {
         this.state = state
-        this.extraDescription = extraDescription
+        this.additionalStateInfo = extraDescription
         this.webserver.wss.clients.forEach((client) => {
             client.sendJSON({
                 type: "state_update",
                 content: state,
+                description: extraDescription || null,
             })
         })
     }
