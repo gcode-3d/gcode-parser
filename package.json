@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "tsc-watch --onSuccess \"cross-env NODE_ENV=development node ./out/src/index.js\"",
-    "production": "tsc && cross-env NODE_ENV=production node ./out/src/index.js"
+    "production": "tsc && node ./productionInstructions.js && cross-env NODE_ENV=production node ./out/src/index.js"
   },
   "repository": {
     "type": "git",
@@ -25,6 +25,8 @@
     "bcrypt": "^5.0.0",
     "express": "^4.17.1",
     "joi": "^17.3.0",
+    "node-fetch": "^2.6.1",
+    "node-stream-zip": "^1.13.2",
     "serialport": "^9.0.4",
     "sqlite3": "^5.0.1",
     "tsc-watch": "^4.2.9",
