@@ -3,3 +3,4 @@ src/stateManager.js
 config.json
 storage.db
 build/
+productionInstructions.js

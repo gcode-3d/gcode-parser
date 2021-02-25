@@ -1,7 +1,11 @@
-module.exports = class Printer {
-    constructor(stateManager, profileSettings, capabilities) {
+import StateManager from "../stateManager"
+
+export default class Printer {
+    stateManager: StateManager
+    capabilities: Map<string, boolean | string>
+    handlers: any[]
+    constructor(stateManager, capabilities) {
         this.stateManager = stateManager
-        this.profileSettings = profileSettings
         this.capabilities = capabilities
         this.handlers = []
     }

@@ -1,26 +1,35 @@
-const globals = require("./globals")
-const SerialConnectionManager = require("./serial")
-const Webserver = require("./webserver")
-const Parser = require("./parser/")
-const Printer = require("./serial/printer.js")
-const Storage = require("./storage")
-const printerProfile = require("../printerProfile.json")
+import Parser from "./parser.js"
+import Webserver from "./webserver.js"
+import globals from "./globals.js"
+import Printer from "./serial/printer.js"
+import Storage from "./storage.js"
+import ExtWebSocket from "./interfaces/websocket"
+import SerialConnectionManager from "./serial/index.js"
+import * as config from "../config.json"
 
-module.exports = class Manager {
+export default class StateManager {
+    state: any
+    config: config
+    printer: Printer | null
+    storage: Storage
+    connectionManager: SerialConnectionManager
+    parser: Parser
+    webserver: Webserver
+    additionalStateInfo: any
+
     constructor() {
         this.state = globals.CONNECTIONSTATE.DISCONNECTED
-        this.config = require("../config.json")
+        this.config = config
         this.printer = null
         this.storage = new Storage()
         this.connectionManager = new SerialConnectionManager(this)
         this.parser = new Parser(this)
         this.webserver = new Webserver(this)
         this.additionalStateInfo = {}
-        this.loops = {}
     }
 
     createPrinter(capabilities) {
-        this.printer = new Printer(this, printerProfile, capabilities)
+        this.printer = new Printer(this, capabilities)
 
         this.printer.updateCapabilities(capabilities)
     }
@@ -63,11 +72,11 @@ module.exports = class Manager {
         }
     }
 
-    updateState(state, extraDescription) {
+    updateState(state, extraDescription: any) {
         this.state = state
         this.additionalStateInfo = extraDescription
-        this.webserver.wss.clients.forEach((client) => {
-            client.sendJSON({
+        this.webserver.wss.clients.forEach((socket: ExtWebSocket) => {
+            socket.sendJSON({
                 type: "state_update",
                 content: state,
                 description: extraDescription || null,

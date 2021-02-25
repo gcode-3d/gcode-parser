@@ -1,5 +1,10 @@
-module.exports = class Permissions {
-    constructor(raw) {
+export default class Permissions {
+    raw: number
+    binary: string
+    reversedBinary: string[]
+    permissions: string[]
+
+    constructor(raw: number) {
         this.raw = raw
         // To maintain backwards compatibility, don't remove or reorder items in this list. Only add new entries.
         this.permissions = [

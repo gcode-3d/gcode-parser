@@ -1,9 +1,13 @@
-module.exports = class parser {
-    constructor(stateManager) {
+import Manager from "./stateManager"
+
+class Parser {
+    stateManager: Manager
+
+    constructor(stateManager: Manager) {
         this.stateManager = stateManager
     }
 
-    calculateChecksum(cmd) {
+    calculateChecksum(cmd: string) {
         var cs = 0
         var byteArray = toUTF8Array(cmd)
 
@@ -14,7 +18,7 @@ module.exports = class parser {
         return cs
     }
 
-    parseResponse(code, responses, returnValues) {
+    parseResponse(code: string, responses: string[], returnValues: boolean) {
         switch (code) {
             case "M115":
                 const firmwareKeys = responses[0].match(/([A-Z_]+:)/g)
@@ -128,3 +132,5 @@ function toUTF8Array(str) {
     }
     return utf8
 }
+
+export default Parser

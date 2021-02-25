@@ -1,4 +1,5 @@
-const Joi = require("joi")
+import Joi from "Joi"
+
 let validBaudrates = [
     "Auto",
     "115200",
@@ -13,7 +14,7 @@ let validBaudrates = [
     "300",
     "110",
 ]
-module.exports = Joi.object({
+export default Joi.object({
     name: Joi.string().normalize().min(1).max(255).required(),
     width: Joi.number().greater(0).required(),
     depth: Joi.number().greater(0).required(),

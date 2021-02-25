@@ -1,0 +1,13 @@
+{
+    "compilerOptions": {
+        "outDir": "./out",
+        "allowJs": false,
+        "target": "ES2020",
+        "moduleResolution": "node",
+        "allowSyntheticDefaultImports": true,
+        "resolveJsonModule": true,
+        "esModuleInterop": true,
+        "module": "commonjs"
+    },
+    "include": ["./src/**/*"]
+}

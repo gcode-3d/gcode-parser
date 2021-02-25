@@ -1,4 +1,6 @@
-module.exports = {
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.default = {
     CONNECTIONSTATE: {
         DISCONNECTED: 0,
         CONNECTED: 1,
@@ -21,4 +23,4 @@ module.exports = {
         300,
         110,
     ],
-}
+};

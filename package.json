@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "cross-env NODE_ENV=development node .",
-    "production": "cross-env NODE_ENV=production node ."
+    "start": "tsc-watch --onSuccess \"cross-env NODE_ENV=development node ./out/src/index.js\"",
+    "production": "tsc && cross-env NODE_ENV=production node ./out/src/index.js"
   },
   "repository": {
     "type": "git",
@@ -18,15 +18,22 @@
   },
   "homepage": "https://github.com/gcode-3d/gcode-parser#readme",
   "dependencies": {
+    "@types/express": "^4.17.11",
+    "@types/serialport": "^8.0.1",
+    "@types/sqlite3": "^3.1.7",
+    "@types/ws": "^7.4.0",
     "bcrypt": "^5.0.0",
     "express": "^4.17.1",
     "joi": "^17.3.0",
     "serialport": "^9.0.4",
     "sqlite3": "^5.0.1",
+    "tsc-watch": "^4.2.9",
+    "typescript": "^4.2.2",
     "uuid": "^8.3.2",
     "ws": "^7.4.2"
   },
   "devDependencies": {
+    "@types/node": "^14.14.31",
     "cross-env": "^7.0.3"
   }
 }

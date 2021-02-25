@@ -1,8 +1,14 @@
-const GLOBALS = require("../globals.js")
-const SerialPort = require("serialport")
-const globals = require("../globals.js")
-const Readline = require("@serialport/parser-readline")
-class SerialConnectionManager {
+import SerialPort from "serialport"
+import StateManager from "../stateManager"
+import GLOBALS from "../globals.js"
+import globals from "../globals.js"
+import Readline from "@serialport/parser-readline"
+
+export default class SerialConnectionManager {
+    stateManager: StateManager
+    lastCommand: { code: string | null; responses: string[] }
+    connection: any
+    parser: any
     constructor(stateManager) {
         this.stateManager = stateManager
         // this.config = this.stateManager.storage.
@@ -44,7 +50,7 @@ class SerialConnectionManager {
 
     handleOpen() {
         this.connection.flush()
-        this.stateManager.updateState(globals.CONNECTIONSTATE.CONNECTED)
+        this.stateManager.updateState(globals.CONNECTIONSTATE.CONNECTED, null)
         this.stateManager.webserver.registerHandler(
             function (message) {
                 if (
@@ -138,7 +144,7 @@ class SerialConnectionManager {
                     }
                 })
                 parser.on("data", function (data) {
-                    responses.push(data)
+                    this.responses.push(data)
                 })
 
                 setTimeout(function () {
@@ -159,13 +165,16 @@ class SerialConnectionManager {
         console.log(`attempt: ${path} - ${baudRate}`)
         return new Promise(
             function (resolve) {
+                let connection = new SerialPort(path, {
+                    baudRate,
+                    autoOpen: false,
+                })
+                let responses = []
+
                 try {
-                    let isWorking = false
-                    const responses = []
-                    const connection = new SerialPort(path, {
-                        baudRate,
-                        autoOpen: false,
-                    })
+                    var isWorking = false
+                    var timeout: NodeJS.Timeout
+
                     setTimeout(function () {
                         connection.close(() => {
                             resolve({
@@ -193,7 +202,7 @@ class SerialConnectionManager {
                             responses.push(data)
                         })
 
-                        setTimeout(function () {
+                        timeout = setTimeout(function () {
                             connection.write("\nM115\n", function () {
                                 connection.drain()
                             })
@@ -241,8 +250,6 @@ class SerialConnectionManager {
         console.error(error)
     }
 }
-
-module.exports = SerialConnectionManager
 
 function makeString(length) {
     var result = ""

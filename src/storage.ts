@@ -1,12 +1,15 @@
-const sqllite = require("sqlite3").verbose()
-const bcrypt = require("bcrypt")
-const crypto = require("crypto")
+import sqlite, { Database } from "sqlite3"
+sqlite.verbose()
 
-const Permissions = require("./permissions")
+import bcrypt from "bcrypt"
+import crypto from "crypto"
+import UserTokenResult from "./classes/UserTokenResult.js"
+import Device from "./classes/device.js"
 
-module.exports = class Storage {
+export default class Storage {
+    db: Database
     constructor() {
-        this.db = new sqllite.Database("storage.db", (err) => {
+        this.db = new sqlite.Database("storage.db", (err) => {
             if (err) {
                 throw err
             }
@@ -24,7 +27,7 @@ module.exports = class Storage {
         })
     }
 
-    validateUser(username, password) {
+    validateUser(username: any, password: any) {
         return new Promise((resolve, reject) => {
             var statement = this.db.prepare(
                 "select password from users where username = ?",
@@ -45,7 +48,7 @@ module.exports = class Storage {
         })
     }
 
-    generateNewToken(username, noExpire) {
+    generateNewToken(username: any, noExpire: any) {
         return new Promise((resolve, reject) => {
             var statement = crypto.randomBytes(25, (err, buf) => {
                 if (err) {
@@ -69,7 +72,7 @@ module.exports = class Storage {
             })
         })
     }
-    validateToken(token) {
+    validateToken(token: string): Promise<UserTokenResult | Boolean> {
         return new Promise((resolve, reject) => {
             var statement = this.db.prepare(
                 "select A.token, A.username, A.expire, B.permissions from tokens A INNER JOIN users B on A.username = B.username where token = ?",
@@ -87,11 +90,13 @@ module.exports = class Storage {
                         return resolve(false)
                     }
                 }
-                return resolve({
-                    username: row.username,
-                    expire: new Date(row.expire),
-                    permissions: new Permissions(row.permissions),
-                })
+                return resolve(
+                    new UserTokenResult(
+                        row.username,
+                        row.expire,
+                        row.permissions
+                    )
+                )
             })
         })
     }
@@ -107,30 +112,41 @@ module.exports = class Storage {
             })
         })
     }
-    listDevices() {
+    listDevices(): Promise<Device[]> {
         return new Promise((resolve, reject) => {
             var statement = this.db.prepare("select * from devices")
             statement.all((err, rows) => {
                 if (err) {
                     return reject(err)
                 }
-                return resolve(rows)
+                let devices: Device[] = rows.map(
+                    (row) =>
+                        new Device(
+                            row.name,
+                            row.path,
+                            row.width,
+                            row.depth,
+                            row.height,
+                            row.baud
+                        )
+                )
+                return resolve(devices)
             })
         })
     }
 
-    saveDevice(name, width, depth, height, path, baud) {
+    saveDevice(device: Device): Promise<void> {
         return new Promise((resolve, reject) => {
             var statement = this.db.prepare(
                 "insert into devices (name, width, depth, height, path, baud) values (?, ?, ?, ?, ?, ?)",
-                name,
-                width,
-                depth,
-                height,
-                path,
-                baud
+                device.name,
+                device.width,
+                device.depth,
+                device.height,
+                device.path,
+                device.baud
             )
-            statement.run((err, r) => {
+            statement.run((err: any, r: any) => {
                 if (err) {
                     return reject(err)
                 }

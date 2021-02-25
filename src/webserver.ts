@@ -1,14 +1,22 @@
-const express = require("express")
-const { v4: uuid } = require("uuid")
-const WebSocket = require("ws")
-const bodyParser = require("body-parser")
-const loginScheme = require("./input/login")
-const setupScheme = require("./input/setupNew")
+import express from "express"
+import { v4 as uuid } from "uuid"
+import WebSocket from "ws"
+import bodyParser from "body-parser"
+import loginScheme from "./schemes/login.js"
+import setupScheme from "./schemes/setupNew.js"
+import { IncomingMessage, Server } from "http"
+import StateManager from "./stateManager.js"
+import ExtWebSocket from "./interfaces/websocket"
+import { Socket } from "net"
 
 let isTestingConnection = false
-
-module.exports = class Webserver {
-    constructor(stateManager) {
+export default class Webserver {
+    app: express.Application
+    stateManager: any
+    server: Server
+    handlers: { (message: any): void }[]
+    wss: WebSocket.Server
+    constructor(stateManager: StateManager) {
         this.app = express()
         this.app.use(
             bodyParser.urlencoded({
@@ -17,6 +25,15 @@ module.exports = class Webserver {
                 parameterLimit: 10,
             })
         )
+        this.app.use(function (_, res, next) {
+            res.setHeader("Access-Control-Allow-Origin", "*")
+            res.setHeader("Access-Control-Allow-Methods", "GET, POST")
+            res.setHeader(
+                "Access-Control-Allow-Headers",
+                "X-Requested-With,content-type, Authorization"
+            )
+            next()
+        })
         this.stateManager = stateManager
         this.setupRoutes()
         this.server = this.app.listen(
@@ -27,7 +44,7 @@ module.exports = class Webserver {
         this.handlers = []
         this.wss = this.createWSS()
     }
-    registerHandler(callback) {
+    registerHandler(callback: () => void) {
         this.handlers.push(callback)
     }
 
@@ -48,7 +65,7 @@ module.exports = class Webserver {
             var token = req.headers.authorization.replace("auth-", "")
             this.stateManager.storage
                 .validateToken(token)
-                .then((userInfo) => {
+                .then((userInfo: { permissions: { serialize: () => any } }) => {
                     if (!userInfo) {
                         return res.sendStatus(401)
                     }
@@ -60,18 +77,18 @@ module.exports = class Webserver {
                     ) {
                         this.stateManager.connectionManager
                             .list()
-                            .then((list) => {
+                            .then((list: any) => {
                                 return res.json(list)
                             })
-                            .catch((e) => {
+                            .catch((e: any) => {
                                 console.error(e)
                             })
                     } else {
                         return res.sendStatus(403)
                     }
                 })
-                .catch((e) => {
-                    console.errror(e)
+                .catch((e: any) => {
+                    console.error(e)
                     res.sendStatus(500)
                 })
         })
@@ -85,7 +102,7 @@ module.exports = class Webserver {
             var token = req.headers.authorization.replace("auth-", "")
             this.stateManager.storage
                 .validateToken(token)
-                .then((userInfo) => {
+                .then((userInfo: { permissions: { serialize: () => any } }) => {
                     if (!userInfo) {
                         return res.sendStatus(401)
                     }
@@ -117,7 +134,7 @@ module.exports = class Webserver {
                                               value.path,
                                               value.baudRate
                                           )
-                                test.then((result) => {
+                                test.then((result: boolean) => {
                                     if (
                                         value.baudRate == "Auto" &&
                                         result == false
@@ -151,7 +168,7 @@ module.exports = class Webserver {
                                                 })
                                             )
                                         })
-                                        .catch((e) => {
+                                        .catch((e: any) => {
                                             console.error(e)
                                             res.status(500).json(
                                                 JSON.stringify({
@@ -161,7 +178,7 @@ module.exports = class Webserver {
                                                 })
                                             )
                                         })
-                                }).catch((e) => {
+                                }).catch((e: any) => {
                                     console.error(e)
                                     isTestingConnection = false
                                     return res.json(
@@ -182,7 +199,7 @@ module.exports = class Webserver {
                         return res.sendStatus(403)
                     }
                 })
-                .catch((e) => {
+                .catch((e: any) => {
                     console.error(e)
                     res.sendStatus(500)
                 })
@@ -236,22 +253,30 @@ module.exports = class Webserver {
         })
     }
 
-    createWSS() {
+    createWSS(): WebSocket.Server {
         const wss = new WebSocket.Server({
             noServer: true,
             maxPayload: 3000,
         })
         this.server.on(
             "upgrade",
-            async function (request, socket, head) {
+            async function (
+                request: IncomingMessage,
+                socket: Socket,
+                head: Buffer
+            ) {
                 if (!request.headers["sec-websocket-protocol"]) {
-                    return res.sendStatus(400)
+                    socket.write("HTTP/1.1 400 Bad Request\r\n\r\n")
+                    socket.destroy()
+                    return
                 } else if (
                     !request.headers["sec-websocket-protocol"].startsWith(
                         "auth-"
                     )
                 ) {
-                    return res.sendStatus(401)
+                    socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n")
+                    socket.destroy()
+                    return
                 }
                 var token = request.headers["sec-websocket-protocol"].replace(
                     "auth-",
@@ -259,25 +284,48 @@ module.exports = class Webserver {
                 )
                 this.stateManager.storage
                     .validateToken(token)
-                    .then((userInfo) => {
+                    .then((userInfo: any) => {
                         if (!userInfo) {
-                            return res.sendStatus(401)
+                            socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n")
+                            socket.destroy()
+                            return
                         }
-                        wss.handleUpgrade(request, socket, head, (ws) => {
-                            ws.userInfo = userInfo
-                            wss.emit("connection", ws, request)
-                        })
+                        wss.handleUpgrade(
+                            request,
+                            socket,
+                            head,
+                            (ws: ExtWebSocket) => {
+                                ws.userInfo = userInfo
+                                wss.emit("connection", ws, request)
+                            }
+                        )
                     })
-                    .catch((e) => {
+                    .catch((e: any) => {
                         console.error(e)
-                        res.sendStatus(500)
+                        socket.write(
+                            "HTTP/1.1 500 Internal Server Error\r\n\r\n"
+                        )
+                        socket.destroy()
+                        return
                     })
             }.bind(this)
         )
         wss.on(
             "connection",
-            async function (socket) {
-                socket.sendJSON = function (json) {
+            async function (socket: {
+                sendJSON: {
+                    (arg0: { type: string; content: any }): void
+                    (json: any): void
+                }
+                send: (arg0: string) => void
+                id: string
+                userInfo: {
+                    username: any
+                    permissions: { serialize: () => any }
+                }
+                on: (arg0: string, arg1: any) => void
+            }) {
+                socket.sendJSON = function (json: any) {
                     socket.send(JSON.stringify(json))
                 }
                 socket.id = uuid()
@@ -298,9 +346,28 @@ module.exports = class Webserver {
                 })
                 socket.on(
                     "message",
-                    function (data) {
+                    function (
+                        data:
+                            | string
+                            | Uint8Array
+                            | Uint8ClampedArray
+                            | Uint16Array
+                            | Uint32Array
+                            | Int8Array
+                            | Int16Array
+                            | Int32Array
+                            | BigUint64Array
+                            | BigInt64Array
+                            | Float32Array
+                            | Float64Array
+                            | DataView
+                            | ArrayBuffer
+                            | SharedArrayBuffer
+                    ) {
                         console.log(`Message: ${Buffer.byteLength(data)} bytes`)
-                        this.handlers.forEach((i) => i(data))
+                        this.handlers.forEach((i: (arg0: any) => any) =>
+                            i(data)
+                        )
                     }.bind(this)
                 )
             }.bind(this)
@@ -310,21 +377,25 @@ module.exports = class Webserver {
             console.log("[WS][Error] " + error)
         })
 
-        wss.on("close", function (error) {
+        wss.on("close", function (error: any) {
             console.log("[WS][Event] Server closed")
         })
         return wss
     }
-    sendTemperatureToClients(data) {
-        this.wss.clients.forEach(function (socket) {
+    sendTemperatureToClients(data: {
+        tools: { name: number; currentTemp: number; targetTemp: number }[]
+        bed: { currentTemp: number; targetTemp: number }
+        chamber: any
+    }) {
+        this.wss.clients.forEach(function (socket: ExtWebSocket) {
             socket.sendJSON({
                 type: "temperature_change",
                 data,
             })
         })
     }
-    sendMessageToClients(data) {
-        this.wss.clients.forEach(function (socket) {
+    sendMessageToClients(data: any) {
+        this.wss.clients.forEach(function (socket: ExtWebSocket) {
             socket.sendJSON({
                 type: "message_receive",
                 data,

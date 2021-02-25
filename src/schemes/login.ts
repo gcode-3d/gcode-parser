@@ -1,6 +1,5 @@
-const Joi = require("joi")
-
-module.exports = Joi.object({
+import Joi from "Joi"
+export default Joi.object({
     username: Joi.string().alphanum().min(3).max(30).required(),
     password: Joi.string().min(8).max(24).required(),
     remember: Joi.boolean(),
