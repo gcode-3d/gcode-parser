@@ -44,7 +44,7 @@ export default class Webserver {
         this.handlers = []
         this.wss = this.createWSS()
     }
-    registerHandler(callback: () => void) {
+    registerHandler(callback: (message: string) => void) {
         this.handlers.push(callback)
     }
 
@@ -260,11 +260,7 @@ export default class Webserver {
         })
         this.server.on(
             "upgrade",
-            async function (
-                request: IncomingMessage,
-                socket: Socket,
-                head: Buffer
-            ) {
+            async (request: IncomingMessage, socket: Socket, head: Buffer) => {
                 if (!request.headers["sec-websocket-protocol"]) {
                     socket.write("HTTP/1.1 400 Bad Request\r\n\r\n")
                     socket.destroy()
@@ -308,11 +304,11 @@ export default class Webserver {
                         socket.destroy()
                         return
                     })
-            }.bind(this)
+            }
         )
         wss.on(
             "connection",
-            async function (socket: {
+            async (socket: {
                 sendJSON: {
                     (arg0: { type: string; content: any }): void
                     (json: any): void
@@ -324,7 +320,7 @@ export default class Webserver {
                     permissions: { serialize: () => any }
                 }
                 on: (arg0: string, arg1: any) => void
-            }) {
+            }) => {
                 socket.sendJSON = function (json: any) {
                     socket.send(JSON.stringify(json))
                 }
@@ -346,7 +342,7 @@ export default class Webserver {
                 })
                 socket.on(
                     "message",
-                    function (
+                    (
                         data:
                             | string
                             | Uint8Array
@@ -363,14 +359,14 @@ export default class Webserver {
                             | DataView
                             | ArrayBuffer
                             | SharedArrayBuffer
-                    ) {
+                    ) => {
                         console.log(`Message: ${Buffer.byteLength(data)} bytes`)
                         this.handlers.forEach((i: (arg0: any) => any) =>
                             i(data)
                         )
-                    }.bind(this)
+                    }
                 )
-            }.bind(this)
+            }
         )
 
         wss.on("error", function (error) {

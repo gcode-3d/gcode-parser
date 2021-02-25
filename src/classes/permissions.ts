@@ -27,7 +27,7 @@ export default class Permissions {
         this.reversedBinary = this.binary.split("").reverse()
     }
     serialize() {
-        let permissions = {}
+        let permissions: any = {}
         this.reversedBinary.forEach((value, index) => {
             permissions[this.permissions[index]] = value == "1" ? true : false
         })

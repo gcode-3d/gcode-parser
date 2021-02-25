@@ -206,7 +206,7 @@ class Webserver {
             noServer: true,
             maxPayload: 3000,
         });
-        this.server.on("upgrade", async function (request, socket, head) {
+        this.server.on("upgrade", async (request, socket, head) => {
             if (!request.headers["sec-websocket-protocol"]) {
                 socket.write("HTTP/1.1 400 Bad Request\r\n\r\n");
                 socket.destroy();
@@ -237,8 +237,8 @@ class Webserver {
                 socket.destroy();
                 return;
             });
-        }.bind(this));
-        wss.on("connection", async function (socket) {
+        });
+        wss.on("connection", async (socket) => {
             socket.sendJSON = function (json) {
                 socket.send(JSON.stringify(json));
             };
@@ -257,11 +257,11 @@ class Webserver {
                     ...currentState,
                 },
             });
-            socket.on("message", function (data) {
+            socket.on("message", (data) => {
                 console.log(`Message: ${Buffer.byteLength(data)} bytes`);
                 this.handlers.forEach((i) => i(data));
-            }.bind(this));
-        }.bind(this));
+            });
+        });
         wss.on("error", function (error) {
             console.log("[WS][Error] " + error);
         });

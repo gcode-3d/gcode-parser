@@ -18,7 +18,11 @@ class Parser {
         return cs
     }
 
-    parseResponse(code: string, responses: string[], returnValues: boolean) {
+    parseResponse(
+        code: string,
+        responses: string[],
+        returnValues: boolean
+    ): Map<string, string | boolean> | tempInfo {
         switch (code) {
             case "M115":
                 const firmwareKeys = responses[0].match(/([A-Z_]+:)/g)
@@ -99,7 +103,7 @@ class Parser {
     }
 }
 
-function toUTF8Array(str) {
+function toUTF8Array(str: string) {
     var utf8 = []
     for (var i = 0; i < str.length; i++) {
         var charcode = str.charCodeAt(i)

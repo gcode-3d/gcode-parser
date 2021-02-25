@@ -28,13 +28,13 @@ export default class StateManager {
         this.additionalStateInfo = {}
     }
 
-    createPrinter(capabilities) {
+    createPrinter(capabilities: Map<string, boolean | string>) {
         this.printer = new Printer(this, capabilities)
 
         this.printer.updateCapabilities(capabilities)
     }
 
-    getCurrentStateInfo() {
+    getCurrentStateInfo(): stateInfo {
         switch (this.state) {
             case globals.CONNECTIONSTATE.DISCONNECTED:
                 return {
@@ -72,7 +72,7 @@ export default class StateManager {
         }
     }
 
-    updateState(state, extraDescription: any) {
+    updateState(state: number, extraDescription: any) {
         this.state = state
         this.additionalStateInfo = extraDescription
         this.webserver.wss.clients.forEach((socket: ExtWebSocket) => {

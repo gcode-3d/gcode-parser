@@ -20,21 +20,21 @@ class SerialConnectionManager {
     openConnection(path, baudRate) {
         console.log("Opening connection");
         this.connection = new serialport_1.default(path, { baudRate });
-        this.connection.writeDrain = function (data, callback) {
+        this.connection.writeDrain = (data, callback) => {
             const matches = data.match(/\n?(?:N\d )?(G\d+|M\d+)/);
             if (matches != null) {
                 this.lastCommand.code = matches[1];
             }
             this.connection.write(data);
             this.connection.drain(callback);
-        }.bind(this);
+        };
         this.connection.on("open", this.handleOpen.bind(this));
-        this.connection.on("error", function (e) {
+        this.connection.on("error", (e) => {
             console.error(e);
             this.stateManager.updateState(globals_js_2.default.CONNECTIONSTATE.ERRORED, {
                 errorDescription: e.message,
             });
-        }.bind(this));
+        });
         return this.connection;
     }
     send(message) {
@@ -44,15 +44,15 @@ class SerialConnectionManager {
     handleOpen() {
         this.connection.flush();
         this.stateManager.updateState(globals_js_2.default.CONNECTIONSTATE.CONNECTED, null);
-        this.stateManager.webserver.registerHandler(function (message) {
+        this.stateManager.webserver.registerHandler((message) => {
             if (this.stateManager.state == globals_js_1.default.CONNECTIONSTATE.CONNECTED) {
                 this.send(message);
             }
-        }.bind(this));
+        });
         this.parser = this.connection.pipe(new parser_readline_1.default());
-        this.parser.on("data", function (data) {
+        this.parser.on("data", (data) => {
             if (data.startsWith("ok ") && this.lastCommand.code != null) {
-                this.stateManager.parser.parseResponse(this.lastCommand.code, this.lastCommand.responses);
+                this.stateManager.parser.parseResponse(this.lastCommand.code, this.lastCommand.responses, false);
                 const responses = this.lastCommand.responses.join("\n") + data;
                 this.stateManager.webserver.sendMessageToClients(responses);
                 this.lastCommand.code = null;
@@ -68,10 +68,10 @@ class SerialConnectionManager {
             else if (this.lastCommand.code != null) {
                 this.lastCommand.responses.push(data);
             }
-        }.bind(this));
+        });
     }
     getBaudrate(path) {
-        return new Promise(async function (resolve) {
+        return new Promise(async (resolve) => {
             let resultBaudrate = 0;
             for (let baudrate of globals_js_1.default.BAUD.slice(0)) {
                 if (resultBaudrate != 0) {
@@ -85,7 +85,7 @@ class SerialConnectionManager {
                 }
             }
             resolve(resultBaudrate == 0 ? false : resultBaudrate);
-        }.bind(this));
+        });
     }
     testConnection(path, baudRate) {
         return new Promise((resolve, reject) => {
@@ -101,8 +101,8 @@ class SerialConnectionManager {
                         resolve(true);
                     }
                 });
-                parser.on("data", function (data) {
-                    this.responses.push(data);
+                parser.on("data", (data) => {
+                    // this.responses.push(data)
                 });
                 setTimeout(function () {
                     connection.write("\nM115\n", function () {
@@ -167,13 +167,13 @@ class SerialConnectionManager {
                 isWorking = false;
                 clearTimeout(timeout);
                 connection.close(() => {
-                    resolve(isWorking);
+                    resolve({ isWorking, responses: [] });
                 });
             }
         }.bind(this));
     }
     create(path, baudrate) {
-        return new Promise(function (resolve, reject) {
+        return new Promise((resolve, reject) => {
             if (!baudrate) {
                 this.getBaudrate(path).then((baudrate) => {
                     if (baudrate === false) {
@@ -185,7 +185,7 @@ class SerialConnectionManager {
             else {
                 resolve(this.openConnection(path, baudrate));
             }
-        }.bind(this));
+        });
     }
     list() {
         return serialport_1.default.list();
@@ -195,12 +195,3 @@ class SerialConnectionManager {
     }
 }
 exports.default = SerialConnectionManager;
-function makeString(length) {
-    var result = "";
-    var characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-    var charactersLength = characters.length;
-    for (var i = 0; i < length; i++) {
-        result += characters.charAt(Math.floor(Math.random() * charactersLength));
-    }
-    return result;
-}

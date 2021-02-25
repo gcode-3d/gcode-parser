@@ -4,15 +4,18 @@ export default class Printer {
     stateManager: StateManager
     capabilities: Map<string, boolean | string>
     handlers: any[]
-    constructor(stateManager, capabilities) {
+    constructor(
+        stateManager: StateManager,
+        capabilities: Map<string, boolean | string>
+    ) {
         this.stateManager = stateManager
         this.capabilities = capabilities
         this.handlers = []
     }
-    registerUpdateHandler(callback) {
+    registerUpdateHandler(callback: () => void) {
         this.handlers.push(callback)
     }
-    updateCapabilities(capabilities) {
+    updateCapabilities(capabilities: Map<string, boolean | string>) {
         // if (
         //     (capabilities.has("Cap:AUTOREPORT_TEMP") &&
         //     capabilities.get("Cap:AUTOREPORT_TEMP") == false) && this

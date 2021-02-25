@@ -7,7 +7,9 @@
         "allowSyntheticDefaultImports": true,
         "resolveJsonModule": true,
         "esModuleInterop": true,
-        "module": "commonjs"
+        "module": "commonjs",
+        "noImplicitAny": true,
+        "noImplicitThis": true
     },
     "include": ["./src/**/*"]
 }
