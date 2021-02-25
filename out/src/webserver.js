@@ -29,11 +29,7 @@ class Webserver {
         this.server = this.app.listen(process.env.NODE_ENV === "production"
             ? stateManager.config.serverPortPROD
             : stateManager.config.serverPortDEV);
-        this.handlers = [];
         this.wss = this.createWSS();
-    }
-    registerHandler(callback) {
-        this.handlers.push(callback);
     }
     setupRoutes() {
         if (process.env.NODE_ENV === "production") {
@@ -258,8 +254,15 @@ class Webserver {
                 },
             });
             socket.on("message", (data) => {
-                console.log(`Message: ${Buffer.byteLength(data)} bytes`);
-                this.handlers.forEach((i) => i(data));
+                if (typeof data != "string") {
+                    return;
+                }
+                try {
+                    let jsonMessage = JSON.parse(data);
+                }
+                catch (e) {
+                    console.error(e);
+                }
             });
         });
         wss.on("error", function (error) {

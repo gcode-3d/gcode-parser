@@ -49,12 +49,6 @@ export default class SerialConnectionManager {
     handleOpen() {
         this.connection.flush()
         this.stateManager.updateState(globals.CONNECTIONSTATE.CONNECTED, null)
-        this.stateManager.webserver.registerHandler((message: string) => {
-            if (this.stateManager.state == GLOBALS.CONNECTIONSTATE.CONNECTED) {
-                this.send(message)
-            }
-        })
-
         this.parser = this.connection.pipe(new Readline())
 
         this.parser.on("data", (data: string) => {

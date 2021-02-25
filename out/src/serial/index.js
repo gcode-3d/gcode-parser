@@ -44,11 +44,6 @@ class SerialConnectionManager {
     handleOpen() {
         this.connection.flush();
         this.stateManager.updateState(globals_js_2.default.CONNECTIONSTATE.CONNECTED, null);
-        this.stateManager.webserver.registerHandler((message) => {
-            if (this.stateManager.state == globals_js_1.default.CONNECTIONSTATE.CONNECTED) {
-                this.send(message);
-            }
-        });
         this.parser = this.connection.pipe(new parser_readline_1.default());
         this.parser.on("data", (data) => {
             if (data.startsWith("ok ") && this.lastCommand.code != null) {

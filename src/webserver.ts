@@ -14,7 +14,6 @@ export default class Webserver {
     app: express.Application
     stateManager: any
     server: Server
-    handlers: { (message: any): void }[]
     wss: WebSocket.Server
     constructor(stateManager: StateManager) {
         this.app = express()
@@ -41,11 +40,7 @@ export default class Webserver {
                 ? stateManager.config.serverPortPROD
                 : stateManager.config.serverPortDEV
         )
-        this.handlers = []
         this.wss = this.createWSS()
-    }
-    registerHandler(callback: (message: string) => void) {
-        this.handlers.push(callback)
     }
 
     setupRoutes() {
@@ -306,68 +301,57 @@ export default class Webserver {
                     })
             }
         )
-        wss.on(
-            "connection",
-            async (socket: {
-                sendJSON: {
-                    (arg0: { type: string; content: any }): void
-                    (json: any): void
-                }
-                send: (arg0: string) => void
-                id: string
-                userInfo: {
-                    username: any
-                    permissions: { serialize: () => any }
-                }
-                on: (arg0: string, arg1: any) => void
-            }) => {
-                socket.sendJSON = function (json: any) {
-                    socket.send(JSON.stringify(json))
-                }
-                socket.id = uuid()
-                console.log("[WS][Event] Connection opened with " + socket.id)
-
-                const currentState = this.stateManager.getCurrentStateInfo()
-                const devices = await this.stateManager.storage.listDeviceConfigNames()
-                socket.sendJSON({
-                    type: "ready",
-                    content: {
-                        setup: devices.length == 0,
-                        user: {
-                            username: socket.userInfo.username,
-                            permissions: socket.userInfo.permissions.serialize(),
-                        },
-                        ...currentState,
-                    },
-                })
-                socket.on(
-                    "message",
-                    (
-                        data:
-                            | string
-                            | Uint8Array
-                            | Uint8ClampedArray
-                            | Uint16Array
-                            | Uint32Array
-                            | Int8Array
-                            | Int16Array
-                            | Int32Array
-                            | BigUint64Array
-                            | BigInt64Array
-                            | Float32Array
-                            | Float64Array
-                            | DataView
-                            | ArrayBuffer
-                            | SharedArrayBuffer
-                    ) => {
-                        console.log(`Message: ${Buffer.byteLength(data)} bytes`)
-                        this.handlers.forEach((i: (arg0: any) => any) =>
-                            i(data)
-                        )
-                    }
-                )
+        wss.on("connection", async (socket: ExtWebSocket) => {
+            socket.sendJSON = function (json: any) {
+                socket.send(JSON.stringify(json))
             }
-        )
+            socket.id = uuid()
+            console.log("[WS][Event] Connection opened with " + socket.id)
+
+            const currentState = this.stateManager.getCurrentStateInfo()
+            const devices = await this.stateManager.storage.listDeviceConfigNames()
+            socket.sendJSON({
+                type: "ready",
+                content: {
+                    setup: devices.length == 0,
+                    user: {
+                        username: socket.userInfo.username,
+                        permissions: socket.userInfo.permissions.serialize(),
+                    },
+                    ...currentState,
+                },
+            })
+            socket.on(
+                "message",
+                (
+                    data:
+                        | string
+                        | Uint8Array
+                        | Uint8ClampedArray
+                        | Uint16Array
+                        | Uint32Array
+                        | Int8Array
+                        | Int16Array
+                        | Int32Array
+                        | BigUint64Array
+                        | BigInt64Array
+                        | Float32Array
+                        | Float64Array
+                        | DataView
+                        | ArrayBuffer
+                        | SharedArrayBuffer
+                ) => {
+                    if (typeof data != "string") {
+                        return
+                    }
+                    try {
+                        let jsonMessage = JSON.parse(data as string)
+                    } catch (e) {
+                        console.error(e)
+                    }
+                }
+            )
+        })
 
         wss.on("error", function (error) {
             console.log("[WS][Error] " + error)
