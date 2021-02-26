@@ -4,3 +4,4 @@ config.json
 storage.db
 build/
 *.zip
+out/
