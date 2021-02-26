@@ -5,6 +5,7 @@ import bcrypt from "bcrypt"
 import crypto from "crypto"
 import UserTokenResult from "./classes/UserTokenResult.js"
 import Device from "./classes/device.js"
+import File from "./classes/file.js"
 
 export default class Storage {
     db: Database
@@ -23,6 +24,9 @@ export default class Storage {
             )
             this.db.run(
                 "CREATE TABLE IF NOT EXISTS devices (name varchar(255) PRIMARY KEY, path varchar(255) not null, width integer(4) not null, depth integer(4) not null, height integer(4) not null, baud varchar(10) not null default 'Auto' )"
+            )
+            this.db.run(
+                "CREATE TABLE IF NOT EXISTS files (name varchar(255) PRIMARY KEY, data BLOB not null, created datetime )"
             )
         })
     }
@@ -146,13 +150,69 @@ export default class Storage {
                 device.path,
                 device.baud
             )
-            statement.run((err: any, r: any) => {
+            statement.run((err: Error, r: any) => {
                 if (err) {
                     return reject(err)
                 }
-                console.log(r)
                 return resolve()
             })
+        })
+    }
+    getFileByName(name: string): Promise<File | null> {
+        return new Promise((resolve, reject) => {
+            if (!name || name.length == 0) {
+                return reject("No name specified")
+            }
+            this.db.get(
+                "select name, data, created from files where name = ?",
+                [name],
+                (err: Error, row: any) => {
+                    if (err) {
+                        return reject(err)
+                    } else if (!row) {
+                        return resolve(null)
+                    }
+                    return resolve(new File(row.name, row.data, row.created))
+                }
+            )
+        })
+    }
+    updateFileName(old_name: string, new_name: string): Promise<null> {
+        return new Promise((resolve, reject) => {
+            if (!old_name || old_name.length == 0) {
+                return reject("No old name specified")
+            } else if (!new_name || new_name.length == 0) {
+                return reject("No new name specified")
+            }
+            this.db.run(
+                "update files set name = ? where name = ?",
+                [new_name, old_name],
+                (err: Error, result: any) => {
+                    if (err) {
+                        return reject(err)
+                    }
+                    console.log(result)
+                    return resolve(null)
+                }
+            )
+        })
+    }
+    removeFileByName(name: string): Promise<null> {
+        return new Promise((resolve, reject) => {
+            if (!name || name.length == 0) {
+                return reject("No name specified")
+            }
+            this.db.run(
+                "delete from files where name = ?",
+                [name],
+                (err: Error, result: any) => {
+                    if (err) {
+                        return reject(err)
+                    }
+                    console.log(result)
+                    return resolve(null)
+                }
+            )
         })
     }
 }

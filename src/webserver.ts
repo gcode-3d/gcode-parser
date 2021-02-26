@@ -8,6 +8,7 @@ import { IncomingMessage, Server } from "http"
 import StateManager from "./stateManager.js"
 import ExtWebSocket from "./interfaces/websocket"
 import { Socket } from "net"
+import ActionManager from "./classes/actionManager.js"
 
 let isTestingConnection = false
 export default class Webserver {
@@ -15,6 +16,7 @@ export default class Webserver {
     stateManager: any
     server: Server
     wss: WebSocket.Server
+    actionManager: ActionManager
     constructor(stateManager: StateManager) {
         this.app = express()
         this.app.use(
@@ -41,6 +43,7 @@ export default class Webserver {
                 : stateManager.config.serverPortDEV
         )
         this.wss = this.createWSS()
+        this.actionManager = new ActionManager(this.stateManager)
     }
 
     setupRoutes() {
@@ -345,7 +348,14 @@ export default class Webserver {
                         return
                     }
                     try {
-                        let jsonMessage = JSON.parse(data as string)
+                        let jsonMessage: {
+                            action: string
+                            data: object
+                        } = JSON.parse(data as string)
+                        this.actionManager.execute(
+                            jsonMessage.action,
+                            jsonMessage.data
+                        )
                     } catch (e) {
                         console.error(e)
                     }
