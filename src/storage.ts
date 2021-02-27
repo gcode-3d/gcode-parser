@@ -5,6 +5,8 @@ import bcrypt from "bcrypt"
 import crypto from "crypto"
 import UserTokenResult from "./classes/UserTokenResult.js"
 import Device from "./classes/device.js"
+import File from "./classes/file.js"
+import { count } from "console"
 
 export default class Storage {
     db: Database
@@ -23,6 +25,9 @@ export default class Storage {
             )
             this.db.run(
                 "CREATE TABLE IF NOT EXISTS devices (name varchar(255) PRIMARY KEY, path varchar(255) not null, width integer(4) not null, depth integer(4) not null, height integer(4) not null, baud varchar(10) not null default 'Auto' )"
+            )
+            this.db.run(
+                "CREATE TABLE IF NOT EXISTS files (name varchar(255) PRIMARY KEY, data BLOB not null, uploaded datetime )"
             )
         })
     }
@@ -101,10 +106,10 @@ export default class Storage {
         })
     }
 
-    listDeviceConfigNames() {
+    listDeviceConfigNames(): Promise<string[]> {
         return new Promise((resolve, reject) => {
             var statement = this.db.prepare("select name from devices")
-            statement.all((err, rows) => {
+            statement.all((err: Error, rows: string[]) => {
                 if (err) {
                     return reject(err)
                 }
@@ -146,13 +151,130 @@ export default class Storage {
                 device.path,
                 device.baud
             )
-            statement.run((err: any, r: any) => {
+            statement.run((err: Error, r: any) => {
                 if (err) {
                     return reject(err)
                 }
-                console.log(r)
                 return resolve()
             })
+        })
+    }
+    insertFile(name: string, data: Buffer): Promise<void> {
+        return new Promise((resolve, reject) => {
+            if (!name || name.length == 0) {
+                return reject("No name specified")
+            }
+            if (!data) {
+                return reject("No data given")
+            }
+            this.db.run(
+                "insert into files (name, data, uploaded) values (?, ?, datetime('now'))",
+                [name, data],
+                (err: Error, result: any) => {
+                    if (err) {
+                        return reject(err)
+                    }
+                    return resolve()
+                }
+            )
+        })
+    }
+
+    checkFileExistsByName(name: string): Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            if (!name || name.length == 0) {
+                return reject("No name specified")
+            }
+            this.db.get(
+                "select 1 from files where name = ? limit 1",
+                name,
+                (err: Error, row: any) => {
+                    if (err) {
+                        return reject(err)
+                    }
+                    return resolve(row !== undefined)
+                }
+            )
+        })
+    }
+
+    getFileList(): Promise<File[]> {
+        return new Promise((resolve, reject) => {
+            this.db.all(
+                "select name, uploaded from files",
+                (err: Error, rows: any) => {
+                    if (err) {
+                        return reject(err)
+                    }
+                    resolve(
+                        rows.map((row: any) => ({
+                            name: row.name,
+                            uploaded: new Date(row.uploaded),
+                        }))
+                    )
+                }
+            )
+        })
+    }
+
+    getFileByName(name: string): Promise<File> {
+        return new Promise((resolve, reject) => {
+            if (!name || name.length == 0) {
+                return reject("No name specified")
+            }
+            this.db.get(
+                "select name, data, uploaded from files where name = ?",
+                [name],
+                (err: Error, row: any) => {
+                    if (err) {
+                        return reject(err)
+                    } else if (!row) {
+                        return resolve(null)
+                    }
+                    return resolve(
+                        new File(row.name, new Date(row.uploaded), row.data)
+                    )
+                }
+            )
+        })
+    }
+
+    updateFileName(old_name: string, new_name: string): Promise<null> {
+        return new Promise((resolve, reject) => {
+            if (!old_name || old_name.length == 0) {
+                return reject("No old name specified")
+            } else if (!new_name || new_name.length == 0) {
+                return reject("No new name specified")
+            }
+            this.db.run(
+                "update files set name = ? where name = ?",
+                [new_name, old_name],
+                (err: Error, result: any) => {
+                    if (err) {
+                        return reject(err)
+                    }
+                    console.log(result)
+                    return resolve(null)
+                }
+            )
+        })
+    }
+    removeFileByName(name: string): Promise<null> {
+        return new Promise((resolve, reject) => {
+            if (!name || name.length == 0) {
+                return reject("No name specified")
+            }
+            this.db.run(
+                "delete from files where name = ?",
+                [name],
+                (err: Error, result: any) => {
+                    if (err) {
+                        return reject(err)
+                    }
+                    console.log(result)
+                    return resolve(null)
+                }
+            )
         })
     }
 }
