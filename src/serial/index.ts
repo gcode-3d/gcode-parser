@@ -21,7 +21,6 @@ export default class SerialConnectionManager {
     }
 
     openConnection(path: string, baudRate: number) {
-        console.log("Opening connection")
         this.connection = new SerialPort(path, { baudRate }) as ExtSerialPort
         this.connection.writeDrain = (data, callback) => {
             const matches = data.match(/\n?(?:N\d )?(G\d+|M\d+)/)
@@ -80,16 +79,16 @@ export default class SerialConnectionManager {
         })
     }
 
-    getBaudrate(path: string): Promise<boolean | number> {
-        return new Promise(async (resolve) => {
-            let resultBaudrate = 0
-            for (let baudrate of GLOBALS.BAUD.slice(0)) {
-                if (resultBaudrate != 0) {
-                    break
-                }
-                const result = await this.returnBaudratePromise(path, baudrate)
-                if (result.isWorking == true) {
-                    resultBaudrate = baudrate
+    getCapabilities(
+        path: string,
+        baudrate: number
+    ): Promise<capabilitiesResponse> {
+        return new Promise((resolve, reject) => {
+            this.returnBaudratePromise(path, baudrate)
+                .then((result) => {
+                    if (result.isWorking == false) {
+                        return { isWorking: false }
+                    }
                     const capabilities = this.stateManager.parser.parseResponse(
                         "M115",
                         result.responses,
@@ -98,6 +97,26 @@ export default class SerialConnectionManager {
                     this.stateManager.createPrinter(
                         capabilities as Map<string, string | boolean>
                     )
+                    return {
+                        isWorking: true,
+                        capabilities,
+                    }
+                })
+                .catch(reject)
+        })
+    }
+
+    getBaudrate(path: string): Promise<boolean | number> {
+        return new Promise(async (resolve) => {
+            let resultBaudrate = 0
+            for (let baudrate of GLOBALS.BAUD.slice(0)) {
+                if (resultBaudrate != 0) {
+                    break
+                }
+
+                const result = await this.getCapabilities(path, baudrate)
+                if (result.isWorking == true) {
+                    resultBaudrate = baudrate
                 }
             }
             resolve(resultBaudrate == 0 ? false : resultBaudrate)
@@ -141,7 +160,6 @@ export default class SerialConnectionManager {
         path: string,
         baudRate: number
     ): Promise<baudRateResponses> {
-        console.log(`attempt: ${path} - ${baudRate}`)
         return new Promise(
             function (resolve: (arg0: baudRateResponses) => void) {
                 let connection = new SerialPort(path, {
@@ -214,7 +232,11 @@ export default class SerialConnectionManager {
                     resolve(this.openConnection(path, baudrate as number))
                 })
             } else {
-                resolve(this.openConnection(path, baudrate))
+                this.getCapabilities(path, baudrate)
+                    .then(() => {
+                        resolve(this.openConnection(path, baudrate))
+                    })
+                    .catch(reject)
             }
         })
     }
