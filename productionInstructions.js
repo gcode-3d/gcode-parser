@@ -24,6 +24,11 @@ function clearBuildFolder() {
     return new Promise(function (resolve, reject) {
         fs.readdir("./build", (err, files) => {
             if (err) {
+                if (err.code == "ENOENT") {
+                    fs.mkdirSync("./build")
+                    // Build folder doesn't exist yet, create folder.
+                    return resolve()
+                }
                 return reject(err)
             }
             for (const file of files) {
