@@ -1,6 +1,7 @@
 import express from "express"
 import { v4 as uuid } from "uuid"
 import WebSocket from "ws"
+import fileUpload, { UploadedFile } from "express-fileupload"
 import bodyParser from "body-parser"
 import loginScheme from "./schemes/login.js"
 import setupScheme from "./schemes/setupNew.js"
@@ -9,11 +10,13 @@ import StateManager from "./stateManager.js"
 import ExtWebSocket from "./interfaces/websocket"
 import { Socket } from "net"
 import ActionManager from "./classes/actionManager.js"
+import UserTokenResult from "./classes/UserTokenResult.js"
+import device from "./classes/device.js"
 
 let isTestingConnection = false
 export default class Webserver {
     app: express.Application
-    stateManager: any
+    stateManager: StateManager
     server: Server
     wss: WebSocket.Server
     actionManager: ActionManager
@@ -24,6 +27,11 @@ export default class Webserver {
                 extended: true,
                 limit: 3000,
                 parameterLimit: 10,
+            })
+        )
+        this.app.use(
+            fileUpload({
+                limits: 20 * 1024 * 1024,
             })
         )
         this.app.use(function (_, res, next) {
@@ -63,10 +71,11 @@ export default class Webserver {
             var token = req.headers.authorization.replace("auth-", "")
             this.stateManager.storage
                 .validateToken(token)
-                .then((userInfo: { permissions: { serialize: () => any } }) => {
+                .then((userInfo: UserTokenResult | Boolean) => {
                     if (!userInfo) {
                         return res.sendStatus(401)
                     }
+                    userInfo = userInfo as UserTokenResult
                     const permissions = userInfo.permissions.serialize()
                     if (
                         permissions["admin"] ||
@@ -90,6 +99,194 @@ export default class Webserver {
                     res.sendStatus(500)
                 })
         })
+
+        this.app.post("/api/file/rename", async (req, res) => {
+            try {
+                var token = req.headers.authorization.replace("auth-", "")
+                var userInfo = await this.stateManager.storage.validateToken(
+                    token
+                )
+                if (!userInfo) {
+                    return res.sendStatus(401)
+                }
+                userInfo = userInfo as UserTokenResult
+                const permissions = userInfo.permissions.serialize()
+                if (!permissions["file.edit"] && !permissions["admin"]) {
+                    return res.sendStatus(401)
+                }
+                if (!req.body || !req.body.new_name || !req.body.old_name) {
+                    return res.sendStatus(400)
+                }
+                const old_exists = await this.stateManager.storage.checkFileExistsByName(
+                    req.body.old_name
+                )
+                if (!old_exists) {
+                    return res.status(404).send("This file doesn't exist.")
+                }
+                const new_exists = await this.stateManager.storage.checkFileExistsByName(
+                    req.body.new_name
+                )
+                if (!new_exists) {
+                    return res
+                        .status(400)
+                        .send("The new filename exists already.")
+                }
+                if (new TextEncoder().encode(req.body.new_name).length > 250) {
+                    return res.status(400).send("New filename is too large")
+                }
+                await this.stateManager.storage.updateFileName(
+                    req.body.old_name,
+                    req.body.new_name
+                )
+                res.sendStatus(200)
+            } catch (e) {
+                console.error(e)
+                return res.sendStatus(500)
+            }
+        })
+
+        this.app.get("/api/files/", async (req, res) => {
+            try {
+                var token = req.headers.authorization.replace("auth-", "")
+                var userInfo = await this.stateManager.storage.validateToken(
+                    token
+                )
+                if (!userInfo) {
+                    return res.sendStatus(401)
+                }
+                userInfo = userInfo as UserTokenResult
+                const permissions = userInfo.permissions.serialize()
+                if (!permissions["file.access"] && !permissions["admin"]) {
+                    return res.sendStatus(401)
+                }
+                var files = await this.stateManager.storage.getFileList()
+                return res.json(files)
+            } catch (e) {
+                console.error(e)
+                return res.sendStatus(500)
+            }
+        })
+
+        this.app.get("/api/file/:file", async (req, res) => {
+            try {
+                var token = req.headers.authorization.replace("auth-", "")
+                var userInfo = await this.stateManager.storage.validateToken(
+                    token
+                )
+                if (!userInfo) {
+                    return res.sendStatus(401)
+                }
+                userInfo = userInfo as UserTokenResult
+                const permissions = userInfo.permissions.serialize()
+                if (!permissions["file.access"] && !permissions["admin"]) {
+                    return res.sendStatus(401)
+                }
+                if (!req.params.file) {
+                    return res.sendStatus(400)
+                }
+
+                const exists = await this.stateManager.storage.checkFileExistsByName(
+                    req.params.file
+                )
+                if (!exists) {
+                    return res.status(404).send("This file doesn't exist.")
+                }
+
+                var file = await this.stateManager.storage.getFileByName(
+                    req.params.file
+                )
+                res.setHeader("X-filename", file.name)
+                res.setHeader("X-upload-date", file.uploaded.toISOString())
+                res.send(file.data.toString("ascii"))
+            } catch (e) {
+                console.error(e)
+                return res.sendStatus(500)
+            }
+        })
+
+        this.app.delete("/api/file/:file", async (req, res) => {
+            try {
+                var token = req.headers.authorization.replace("auth-", "")
+                var userInfo = await this.stateManager.storage.validateToken(
+                    token
+                )
+                if (!userInfo) {
+                    return res.sendStatus(401)
+                }
+                userInfo = userInfo as UserTokenResult
+                const permissions = userInfo.permissions.serialize()
+                if (!permissions["file.edit"] && !permissions["admin"]) {
+                    return res.sendStatus(401)
+                }
+                if (!req.params.file) {
+                    return res.sendStatus(400)
+                }
+
+                const exists = await this.stateManager.storage.checkFileExistsByName(
+                    req.params.file
+                )
+                if (!exists) {
+                    return res.status(404).send("This file doesn't exist.")
+                }
+
+                await this.stateManager.storage.removeFileByName(
+                    req.params.file
+                )
+                res.sendStatus(200)
+            } catch (e) {
+                console.error(e)
+                return res.sendStatus(500)
+            }
+        })
+
+        this.app.put("/api/files/", async (req, res) => {
+            try {
+                var token = req.headers.authorization.replace("auth-", "")
+                var userInfo = await this.stateManager.storage.validateToken(
+                    token
+                )
+                if (!userInfo) {
+                    return res.sendStatus(401)
+                }
+                userInfo = userInfo as UserTokenResult
+                const permissions = userInfo.permissions.serialize()
+                if (!permissions["file.edit"] && !permissions["admin"]) {
+                    return res.sendStatus(401)
+                }
+
+                if (!req.files || Object.keys(req.files).length === 0) {
+                    return res.status(400).send("No files were uploaded.")
+                } else if (Object.keys(req.files).length !== 1) {
+                    return res.status(400).send("Only upload 1 file at a time.")
+                } else if (!req.files["file"]) {
+                    return res.status(400).send("NO files were uploaded.")
+                }
+
+                let file = req.files["file"] as UploadedFile
+                if (file.truncated) {
+                    return res.sendStatus(413)
+                }
+                const exists = await this.stateManager.storage.checkFileExistsByName(
+                    file.name
+                )
+                if (exists) {
+                    return res.status(409).send("This file already exists.")
+                }
+                this.stateManager.storage
+                    .insertFile(file.name, file.data)
+                    .then(() => {
+                        res.sendStatus(200)
+                    })
+                    .catch((e) => {
+                        console.error(e)
+                        res.sendStatus(500)
+                    })
+            } catch (e) {
+                console.error(e)
+                res.sendStatus(500)
+            }
+        })
+
         this.app.post("/api/setup", (req, res) => {
             if (!req.headers.authorization) {
                 return res.sendStatus(401)
@@ -100,10 +297,11 @@ export default class Webserver {
             var token = req.headers.authorization.replace("auth-", "")
             this.stateManager.storage
                 .validateToken(token)
-                .then((userInfo: { permissions: { serialize: () => any } }) => {
+                .then((userInfo: boolean | UserTokenResult) => {
                     if (!userInfo) {
                         return res.sendStatus(401)
                     }
+                    userInfo = userInfo as UserTokenResult
                     const permissions = userInfo.permissions.serialize()
                     if (
                         permissions["admin"] ||
@@ -149,14 +347,16 @@ export default class Webserver {
                                     isTestingConnection = false
                                     this.stateManager.storage
                                         .saveDevice(
-                                            value.name,
-                                            value.width,
-                                            value.depth,
-                                            value.height,
-                                            value.path,
-                                            value.baudRate == "Auto"
-                                                ? result
-                                                : value.baudRate
+                                            new device(
+                                                value.name,
+                                                value.width,
+                                                value.depth,
+                                                value.height,
+                                                value.path,
+                                                value.baudRate == "Auto"
+                                                    ? result
+                                                    : value.baudRate
+                                            )
                                         )
                                         .then(() => {
                                             res.status(200).json(
@@ -344,6 +544,9 @@ export default class Webserver {
                         | ArrayBuffer
                         | SharedArrayBuffer
                 ) => {
+                    if (!socket.userInfo) {
+                        return socket.close()
+                    }
                     if (typeof data != "string") {
                         return
                     }
@@ -352,12 +555,14 @@ export default class Webserver {
                             action: string
                             data: object
                         } = JSON.parse(data as string)
+
                         this.actionManager.execute(
+                            socket.userInfo,
                             jsonMessage.action,
                             jsonMessage.data
                         )
                     } catch (e) {
-                        console.error(e)
+                        console.log(e)
                     }
                 }
             )
