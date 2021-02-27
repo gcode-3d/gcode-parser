@@ -388,7 +388,7 @@ export default class Webserver {
                                     )
                                 })
                             })
-                            .catch((e) => {
+                            .catch((e: any) => {
                                 console.error(e)
                                 isTestingConnection = false
                                 res.sendStatus(500)
@@ -429,7 +429,7 @@ export default class Webserver {
                     // pass token to client
                     return res.json({ token })
                 })
-                .catch((e) => {
+                .catch((e: any) => {
                     console.log(e)
                     if (e.details) {
                         let detail = e.details[0]
