@@ -32,6 +32,20 @@ export default class Storage {
         })
     }
 
+    needsSetup(): Promise<boolean> {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                "select count(*) as count from users",
+                (err: Error, row: any) => {
+                    if (err) {
+                        return reject(err)
+                    }
+                    return resolve(row.count === 0)
+                }
+            )
+        })
+    }
+
     validateUser(username: any, password: any) {
         return new Promise((resolve, reject) => {
             var statement = this.db.prepare(

@@ -12,7 +12,10 @@ import { Socket } from "net"
 import ActionManager from "./classes/actionManager.js"
 import UserTokenResult from "./classes/UserTokenResult.js"
 import device from "./classes/device.js"
-
+const gitHash = require("child_process")
+    .execSync("git rev-parse HEAD")
+    .toString()
+    .trim()
 let isTestingConnection = false
 export default class Webserver {
     app: express.Application
@@ -20,7 +23,9 @@ export default class Webserver {
     server: Server
     wss: WebSocket.Server
     actionManager: ActionManager
+    isInSetupMode: boolean
     constructor(stateManager: StateManager) {
+        this.isInSetupMode = false
         this.app = express()
         this.app.use(
             bodyParser.urlencoded({
@@ -52,52 +57,73 @@ export default class Webserver {
         )
         this.wss = this.createWSS()
         this.actionManager = new ActionManager(this.stateManager)
+        this.stateManager.storage
+            .needsSetup()
+            .then((needsSetup) => {
+                this.isInSetupMode = needsSetup
+                if (needsSetup) {
+                    console.log(
+                        "[Setup] Setup mode enabled. Administrator mode enabled to set initial values."
+                    )
+                }
+            })
+            .catch(console.error)
     }
 
     setupRoutes() {
         if (process.env.NODE_ENV === "production") {
+            this.app.use((_, res, next) => {
+                res.setHeader("X-Version", gitHash)
+                next()
+            })
             this.app.use(express.static("build"))
         }
         this.app.get("/api/ping", (_, res) => {
             res.status(200).send("Pong")
         })
-        this.app.get("/api/fetchDevices", (req, res) => {
-            if (!req.headers.authorization) {
-                return res.sendStatus(401)
-            }
-            if (!req.headers.authorization.startsWith("auth-")) {
-                return res.sendStatus(401)
-            }
-            var token = req.headers.authorization.replace("auth-", "")
-            this.stateManager.storage
-                .validateToken(token)
-                .then((userInfo: UserTokenResult | Boolean) => {
-                    if (!userInfo) {
+        this.app.get("/api/fetchDevices", async (req, res) => {
+            try {
+                let userInfo
+
+                if (!this.isInSetupMode) {
+                    if (!req.headers.authorization) {
                         return res.sendStatus(401)
                     }
-                    userInfo = userInfo as UserTokenResult
-                    const permissions = userInfo.permissions.serialize()
-                    if (
-                        permissions["admin"] ||
-                        (permissions["connection.edit"] &&
-                            permissions["settings.edit"])
-                    ) {
-                        this.stateManager.connectionManager
-                            .list()
-                            .then((list: any) => {
-                                return res.json(list)
-                            })
-                            .catch((e: any) => {
-                                console.error(e)
-                            })
-                    } else {
-                        return res.sendStatus(403)
+                    if (!req.headers.authorization.startsWith("auth-")) {
+                        return res.sendStatus(401)
                     }
-                })
-                .catch((e: any) => {
-                    console.error(e)
-                    res.sendStatus(500)
-                })
+                    var token = req.headers.authorization.replace("auth-", "")
+                    userInfo = await this.stateManager.storage.validateToken(
+                        token
+                    )
+                } else {
+                    userInfo = new UserTokenResult("SETUP", null, 1)
+                }
+                if (!userInfo) {
+                    return res.sendStatus(401)
+                }
+                userInfo = userInfo as UserTokenResult
+                const permissions = userInfo.permissions.serialize()
+                if (
+                    permissions["admin"] ||
+                    (permissions["connection.edit"] &&
+                        permissions["settings.edit"])
+                ) {
+                    this.stateManager.connectionManager
+                        .list()
+                        .then((list: any) => {
+                            return res.json(list)
+                        })
+                        .catch((e: any) => {
+                            console.error(e)
+                        })
+                } else {
+                    return res.sendStatus(403)
+                }
+            } catch (e) {
+                console.error(e)
+                res.sendStatus(500)
+            }
         })
 
         this.app.post("/api/file/rename", async (req, res) => {
