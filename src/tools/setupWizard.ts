@@ -27,8 +27,7 @@ function clearBuildFolder() {
         fs.readdir("./build/setup_wizard", (err, files) => {
             if (err) {
                 if (err.code == "ENOENT") {
-                    fs.mkdirSync("./build/")
-                    fs.mkdirSync("./build/setup_wizard")
+                    fs.mkdirSync("./build/setup_wizard", { recursive: true })
                     // Build folder doesn't exist yet, create folder.
                     return resolve()
                 }
