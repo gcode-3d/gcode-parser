@@ -363,7 +363,7 @@ export default class Webserver {
                         isTestingConnection = true
                         setupScheme
                             .validateAsync(req.body)
-                            .then((value: any) => {
+                            .then((value) => {
                                 var test =
                                     value.baudRate == "Auto"
                                         ? this.stateManager.connectionManager.getBaudrate(
@@ -448,7 +448,7 @@ export default class Webserver {
         this.app.post("/api/login", (req, res) => {
             loginScheme
                 .validateAsync(req.body)
-                .then(async (value: any) => {
+                .then(async (value) => {
                     let date = new Date(value.datetime)
                     let dateDiff = new Date().getTime() - date.getTime()
                     if (dateDiff > 5000 || dateDiff < 0) {
