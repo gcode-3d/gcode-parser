@@ -12,7 +12,7 @@ fetch("https://github.com/gcode-3d/client/releases/latest/download/dist.zip")
             console.log("[PROD] - Finished downloading dist.zip from GitHub")
             await clearBuildFolder()
             const zip = new StreamZip.async({ file: "./dist.zip" })
-            const extracted = await zip.extract(null, "./build")
+            const extracted = await zip.extract(null, "./build/client")
             console.log(`[PROD] - Extracted ${extracted} entries from zip`)
             console.log(`[PROD] - Finished updating build files`)
             process.exit()
@@ -22,17 +22,18 @@ fetch("https://github.com/gcode-3d/client/releases/latest/download/dist.zip")
 
 function clearBuildFolder() {
     return new Promise(function (resolve, reject) {
-        fs.readdir("./build", (err, files) => {
+        fs.readdir("./build/client", (err, files) => {
             if (err) {
                 if (err.code == "ENOENT") {
-                    fs.mkdirSync("./build")
+                    fs.mkdirSync("./build/")
+                    fs.mkdirSync("./build/client")
                     // Build folder doesn't exist yet, create folder.
                     return resolve()
                 }
                 return reject(err)
             }
             for (const file of files) {
-                fs.unlinkSync(path.join("./build", file))
+                fs.unlinkSync(path.join("./build/client", file))
             }
             resolve()
         })

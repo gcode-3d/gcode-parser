@@ -12,6 +12,7 @@ import { Socket } from "net"
 import ActionManager from "./classes/actionManager.js"
 import UserTokenResult from "./classes/UserTokenResult.js"
 import device from "./classes/device.js"
+import setupWizard from "./tools/setupWizard.js"
 const gitHash = require("child_process")
     .execSync("git rev-parse HEAD")
     .toString()
@@ -49,23 +50,22 @@ export default class Webserver {
             next()
         })
         this.stateManager = stateManager
-        this.setupRoutes()
-        this.server = this.app.listen(
-            process.env.NODE_ENV === "production"
-                ? stateManager.config.serverPortPROD
-                : stateManager.config.serverPortDEV
-        )
-        this.wss = this.createWSS()
         this.actionManager = new ActionManager(this.stateManager)
         this.stateManager.storage
             .needsSetup()
             .then((needsSetup) => {
                 this.isInSetupMode = needsSetup
                 if (needsSetup) {
-                    console.log(
-                        "[Setup] Setup mode enabled. Administrator mode enabled to set initial values."
-                    )
+                    console.log("[Setup] Setup required. Enabling setup mode.")
                 }
+
+                this.setupRoutes()
+                this.server = this.app.listen(
+                    process.env.NODE_ENV === "production"
+                        ? stateManager.config.serverPortPROD
+                        : stateManager.config.serverPortDEV
+                )
+                this.wss = this.createWSS()
             })
             .catch(console.error)
     }
@@ -76,11 +76,28 @@ export default class Webserver {
                 res.setHeader("X-Version", gitHash)
                 next()
             })
-            this.app.use(express.static("build"))
+
+            if (this.isInSetupMode) {
+                setupWizard()
+                    .then((location: string) => {
+                        this.app.use(express.static(location))
+                    })
+                    .catch((e: Error) => {
+                        throw e
+                    })
+            } else {
+                this.app.use(express.static("build"))
+            }
         }
         this.app.get("/api/ping", (_, res) => {
             res.status(200).send("Pong")
         })
+
+        this.app.post("/api/submitSetup", async (req, res) => {
+            console.log("submit called")
+            console.log(req.body)
+        })
+
         this.app.get("/api/fetchDevices", async (req, res) => {
             try {
                 let userInfo
