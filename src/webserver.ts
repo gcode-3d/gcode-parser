@@ -471,9 +471,14 @@ export default class Webserver {
                     .validateToken(token)
                     .then((userInfo: any) => {
                         if (!userInfo) {
-                            socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n")
-                            socket.destroy()
-                            return
+                            return wss.handleUpgrade(
+                                request,
+                                socket,
+                                head,
+                                (ws: WebSocket) => {
+                                    return ws.close(4001, "4001 Unauthorized")
+                                }
+                            )
                         }
                         wss.handleUpgrade(
                             request,
