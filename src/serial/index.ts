@@ -87,20 +87,22 @@ export default class SerialConnectionManager {
             this.returnBaudratePromise(path, baudrate)
                 .then((result) => {
                     if (result.isWorking == false) {
-                        return { isWorking: false }
+                        return resolve({
+                            isWorking: false,
+                            capabilities: null,
+                        })
                     }
                     const capabilities = this.stateManager.parser.parseResponse(
                         "M115",
                         result.responses,
                         true
-                    )
-                    this.stateManager.createPrinter(
-                        capabilities as Map<string, string | boolean>
-                    )
-                    return {
+                    ) as Map<string, string | boolean>
+                    this.stateManager.createPrinter(capabilities)
+
+                    return resolve({
                         isWorking: true,
                         capabilities,
-                    }
+                    })
                 })
                 .catch(reject)
         })
