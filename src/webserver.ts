@@ -87,7 +87,7 @@ export default class Webserver {
                         throw e
                     })
             } else {
-                this.app.use(express.static("build"))
+                this.app.use(express.static("build/client"))
             }
         }
         this.app.get("/api/ping", (_, res) => {
@@ -136,12 +136,10 @@ export default class Webserver {
                                 result.toString()
                             )
                             try {
-                                console.log(data.account.username)
                                 let x = await this.stateManager.storage.saveUser(
                                     data.account.username,
                                     data.account.password
                                 )
-                                console.log(x)
                                 await this.stateManager.storage.saveDevice(
                                     device
                                 )
