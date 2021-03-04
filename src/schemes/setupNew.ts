@@ -15,12 +15,26 @@ let validBaudrates = [
     "110",
 ]
 export default Joi.object({
-    name: Joi.string().normalize().min(1).max(255).required(),
-    width: Joi.number().greater(0).required(),
-    depth: Joi.number().greater(0).required(),
-    height: Joi.number().greater(0).required(),
-    heatedBed: Joi.boolean(),
-    heatedChamber: Joi.boolean(),
-    baudRate: Joi.string().valid(...validBaudrates),
-    path: Joi.string().required(),
+    device: Joi.object({
+        path: Joi.string().normalize().required(),
+        manufacturer: Joi.string().normalize(),
+        serialNumber: Joi.string().normalize(),
+        pnpId: Joi.string().normalize(),
+        locationId: Joi.string().normalize(),
+        vendorId: Joi.string().normalize(),
+        productId: Joi.string().normalize(),
+    }).required(),
+    printInfo: Joi.object({
+        xValue: Joi.number().min(1).required(),
+        yValue: Joi.number().min(1).required(),
+        zValue: Joi.number().min(1).required(),
+        origin: Joi.string().valid("lower-left", "center").required(),
+        heatedBed: Joi.boolean().required(),
+        heatedChamber: Joi.boolean().required(),
+        printerName: Joi.string().min(1).alphanum().required(),
+    }),
+    account: Joi.object({
+        username: Joi.string().normalize().min(1).max(250).required(),
+        password: Joi.string().normalize().min(1).max(60).required(),
+    }).required(),
 })

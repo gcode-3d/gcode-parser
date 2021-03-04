@@ -1,12 +1,12 @@
 import sqlite, { Database } from "sqlite3"
 sqlite.verbose()
 
+const saltRounds = 10
 import bcrypt from "bcrypt"
 import crypto from "crypto"
 import UserTokenResult from "./classes/UserTokenResult.js"
 import Device from "./classes/device.js"
 import File from "./classes/file.js"
-import { count } from "console"
 
 export default class Storage {
     db: Database
@@ -24,7 +24,7 @@ export default class Storage {
                 "CREATE TABLE IF NOT EXISTS  tokens (username varchar(30) not null,token varchar(50) not null primary key,expire datetime, foreign key (username) REFERENCES users(username))"
             )
             this.db.run(
-                "CREATE TABLE IF NOT EXISTS devices (name varchar(255) PRIMARY KEY, path varchar(255) not null, width integer(4) not null, depth integer(4) not null, height integer(4) not null, baud varchar(10) not null default 'Auto' )"
+                "CREATE TABLE IF NOT EXISTS devices (name varchar(255) PRIMARY KEY, path varchar(255) not null, width integer(4) not null, depth integer(4) not null, height integer(4) not null, baud varchar(10) not null default 'Auto', heatedBed boolean not null, heatedChamber boolean not null)"
             )
             this.db.run(
                 "CREATE TABLE IF NOT EXISTS files (name varchar(255) PRIMARY KEY, data BLOB not null, uploaded datetime )"
@@ -40,13 +40,36 @@ export default class Storage {
                     if (err) {
                         return reject(err)
                     }
+
                     return resolve(row.count === 0)
                 }
             )
         })
     }
 
-    validateUser(username: any, password: any) {
+    saveUser(username: string, password: string): Promise<void> {
+        return new Promise((resolve, reject) => {
+            bcrypt
+                .hash(password, saltRounds)
+                .then((passwordHash) => {
+                    var statement = this.db.prepare(
+                        "insert into users (username, password, permissions) values (?, ?, 1)"
+                    )
+                    statement.run([username, passwordHash], (err) => {
+                        if (err) {
+                            return reject(err)
+                        }
+                        return resolve()
+                    })
+                })
+                .catch((e) => {
+                    console.error(e)
+                    return reject(e)
+                })
+        })
+    }
+
+    validateUser(username: string, password: string) {
         return new Promise((resolve, reject) => {
             var statement = this.db.prepare(
                 "select password from users where username = ?",
@@ -146,7 +169,9 @@ export default class Storage {
                             row.width,
                             row.depth,
                             row.height,
-                            row.baud
+                            row.baud,
+                            row.heatedBed,
+                            row.heatedChamber
                         )
                 )
                 return resolve(devices)
@@ -157,13 +182,15 @@ export default class Storage {
     saveDevice(device: Device): Promise<void> {
         return new Promise((resolve, reject) => {
             var statement = this.db.prepare(
-                "insert into devices (name, width, depth, height, path, baud) values (?, ?, ?, ?, ?, ?)",
+                "insert into devices (name, width, depth, height, path, baud, heatedBed, heatedChamber) values (?, ?, ?, ?, ?, ?, ?, ?)",
                 device.name,
                 device.width,
                 device.depth,
                 device.height,
                 device.path,
-                device.baud
+                device.baud,
+                device.heatedBed,
+                device.heatedChamber
             )
             statement.run((err: Error, r: any) => {
                 if (err) {
@@ -267,7 +294,6 @@ export default class Storage {
                     if (err) {
                         return reject(err)
                     }
-                    console.log(result)
                     return resolve(null)
                 }
             )
@@ -285,7 +311,6 @@ export default class Storage {
                     if (err) {
                         return reject(err)
                     }
-                    console.log(result)
                     return resolve(null)
                 }
             )

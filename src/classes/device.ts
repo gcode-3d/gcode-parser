@@ -5,6 +5,8 @@ export default class device {
     depth: number
     height: number
     baud: string
+    heatedBed: boolean
+    heatedChamber: boolean
 
     constructor(
         name: string,
@@ -12,6 +14,8 @@ export default class device {
         width: number,
         depth: number,
         height: number,
+        heatedBed: boolean,
+        heatedChamber: boolean,
         baud: string
     ) {
         this.name = name
@@ -20,5 +24,7 @@ export default class device {
         this.depth = depth
         this.height = height
         this.baud = baud
+        this.heatedBed = heatedBed
+        this.heatedChamber = heatedChamber
     }
 }

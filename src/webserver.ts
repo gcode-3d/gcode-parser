@@ -11,7 +11,7 @@ import ExtWebSocket from "./interfaces/websocket"
 import { Socket } from "net"
 import ActionManager from "./classes/actionManager.js"
 import UserTokenResult from "./classes/UserTokenResult.js"
-import device from "./classes/device.js"
+import Device from "./classes/device.js"
 import setupWizard from "./tools/setupWizard.js"
 const gitHash = require("child_process")
     .execSync("git rev-parse HEAD")
@@ -35,6 +35,7 @@ export default class Webserver {
                 parameterLimit: 10,
             })
         )
+        this.app.use(bodyParser.json())
         this.app.use(
             fileUpload({
                 limits: 20 * 1024 * 1024,
@@ -94,8 +95,72 @@ export default class Webserver {
         })
 
         this.app.post("/api/submitSetup", async (req, res) => {
-            console.log("submit called")
-            console.log(req.body)
+            setupScheme
+                .validateAsync(req.body)
+                .then(async (data) => {
+                    try {
+                        let result = await this.stateManager.storage.needsSetup()
+                        if (!result) {
+                            console.log(
+                                "[Setup] Setup not required but still got call to /api/submitSetup"
+                            )
+                            return res.sendStatus(403)
+                        }
+                    } catch (e) {
+                        console.error(e)
+                        res.sendStatus(500)
+                    }
+                    let devicePath = data.device.path.startsWith("COM")
+                        ? "\\\\.\\" + data.device.path
+                        : data.device.path
+
+                    this.stateManager.connectionManager
+                        .getBaudrate(devicePath)
+                        .then(async (result: Boolean | number) => {
+                            if (result == false) {
+                                return res.status(500).json({
+                                    error: true,
+                                    message:
+                                        "Could not communicate with device using any of the default baudrates",
+                                })
+                            }
+
+                            let device = new Device(
+                                data.printInfo.printerName,
+                                devicePath,
+                                data.printInfo.xValue,
+                                data.printInfo.yValue,
+                                data.printInfo.zValue,
+                                data.printInfo.heatedBed,
+                                data.printInfo.heatedChamber,
+                                result.toString()
+                            )
+                            try {
+                                console.log(data.account.username)
+                                let x = await this.stateManager.storage.saveUser(
+                                    data.account.username,
+                                    data.account.password
+                                )
+                                console.log(x)
+                                await this.stateManager.storage.saveDevice(
+                                    device
+                                )
+                                res.sendStatus(200)
+                                // exit program to restart
+                                console.log(
+                                    "[Setup] Setup completed, restarting.."
+                                )
+                                process.exit()
+                            } catch (e) {
+                                console.error(e)
+                                return res.sendStatus(500)
+                            }
+                        })
+                })
+                .catch((e) => {
+                    console.error(e)
+                    return res.sendStatus(500)
+                })
         })
 
         this.app.get("/api/fetchDevices", async (req, res) => {
@@ -330,121 +395,6 @@ export default class Webserver {
             }
         })
 
-        this.app.post("/api/setup", (req, res) => {
-            if (!req.headers.authorization) {
-                return res.sendStatus(401)
-            }
-            if (!req.headers.authorization.startsWith("auth-")) {
-                return res.sendStatus(401)
-            }
-            var token = req.headers.authorization.replace("auth-", "")
-            this.stateManager.storage
-                .validateToken(token)
-                .then((userInfo: boolean | UserTokenResult) => {
-                    if (!userInfo) {
-                        return res.sendStatus(401)
-                    }
-                    userInfo = userInfo as UserTokenResult
-                    const permissions = userInfo.permissions.serialize()
-                    if (
-                        permissions["admin"] ||
-                        (permissions["connection.edit"] &&
-                            permissions["settings.edit"])
-                    ) {
-                        if (isTestingConnection) {
-                            return res.status(503).json(
-                                JSON.stringify({
-                                    error: true,
-                                    message:
-                                        "Server is already occupied setting up another device",
-                                })
-                            )
-                        }
-                        isTestingConnection = true
-                        setupScheme
-                            .validateAsync(req.body)
-                            .then((value) => {
-                                var test =
-                                    value.baudRate == "Auto"
-                                        ? this.stateManager.connectionManager.getBaudrate(
-                                              value.path
-                                          )
-                                        : this.stateManager.connectionManager.testConnection(
-                                              value.path,
-                                              value.baudRate
-                                          )
-                                test.then((result: boolean) => {
-                                    if (
-                                        value.baudRate == "Auto" &&
-                                        result == false
-                                    ) {
-                                        isTestingConnection = false
-                                        return res.json(
-                                            JSON.stringify({
-                                                error: true,
-                                                message:
-                                                    "Connection to printer failed",
-                                            })
-                                        )
-                                    }
-                                    isTestingConnection = false
-                                    this.stateManager.storage
-                                        .saveDevice(
-                                            new device(
-                                                value.name,
-                                                value.width,
-                                                value.depth,
-                                                value.height,
-                                                value.path,
-                                                value.baudRate == "Auto"
-                                                    ? result
-                                                    : value.baudRate
-                                            )
-                                        )
-                                        .then(() => {
-                                            res.status(200).json(
-                                                JSON.stringify({
-                                                    error: false,
-                                                    message: "Success",
-                                                })
-                                            )
-                                        })
-                                        .catch((e: any) => {
-                                            console.error(e)
-                                            res.status(500).json(
-                                                JSON.stringify({
-                                                    error: true,
-                                                    message:
-                                                        "Failed to save configuration. Try again later.",
-                                                })
-                                            )
-                                        })
-                                }).catch((e: any) => {
-                                    console.error(e)
-                                    isTestingConnection = false
-                                    return res.json(
-                                        JSON.stringify({
-                                            error: true,
-                                            message:
-                                                "Connection to printer failed",
-                                        })
-                                    )
-                                })
-                            })
-                            .catch((e: any) => {
-                                console.error(e)
-                                isTestingConnection = false
-                                res.sendStatus(500)
-                            })
-                    } else {
-                        return res.sendStatus(403)
-                    }
-                })
-                .catch((e: any) => {
-                    console.error(e)
-                    res.sendStatus(500)
-                })
-        })
         this.app.post("/api/login", (req, res) => {
             loginScheme
                 .validateAsync(req.body)
