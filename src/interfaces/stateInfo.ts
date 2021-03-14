@@ -1,5 +1,4 @@
 interface stateInfo {
     state: string
-    print?: string
-    description?: string
+    description?: string | tempInfo
 }

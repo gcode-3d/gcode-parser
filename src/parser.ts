@@ -90,6 +90,11 @@ class Parser {
                         chamber,
                     }
                 } else {
+                    this.stateManager.printer.setTemperatureInfo({
+                        tools,
+                        bed,
+                        chamber,
+                    })
                     this.stateManager.webserver.sendTemperatureToClients({
                         tools,
                         bed,

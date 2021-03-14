@@ -41,12 +41,18 @@ export default class Webserver {
                 limits: 20 * 1024 * 1024,
             })
         )
-        this.app.use(function (_, res, next) {
+        this.app.use(function (req, res, next) {
             res.setHeader("Access-Control-Allow-Origin", "*")
-            res.setHeader("Access-Control-Allow-Methods", "GET, POST")
+            if (req.url.startsWith("/api/files")) {
+                res.setHeader("Access-Control-Allow-Methods", "GET, PUT")
+            } else if (req.url.startsWith("/api/file")) {
+                res.setHeader("Access-Control-Allow-Methods", "GET, DELETE")
+            } else {
+                res.setHeader("Access-Control-Allow-Methods", "GET, POST")
+            }
             res.setHeader(
                 "Access-Control-Allow-Headers",
-                "X-Requested-With,content-type, Authorization"
+                "X-Requested-With,content-type, Authorization, X-force-upload"
             )
             next()
         })
@@ -60,7 +66,7 @@ export default class Webserver {
                     console.log("[Setup] Setup required. Enabling setup mode.")
                 }
 
-                this.setupRoutes()
+                this.createRoutes()
                 this.server = this.app.listen(
                     process.env.NODE_ENV === "production"
                         ? stateManager.config.serverPortPROD
@@ -71,7 +77,7 @@ export default class Webserver {
             .catch(console.error)
     }
 
-    setupRoutes() {
+    createRoutes() {
         if (process.env.NODE_ENV === "production") {
             this.app.use((_, res, next) => {
                 res.setHeader("X-Version", gitHash)
@@ -136,7 +142,7 @@ export default class Webserver {
                                 result.toString()
                             )
                             try {
-                                let x = await this.stateManager.storage.saveUser(
+                                await this.stateManager.storage.saveUser(
                                     data.account.username,
                                     data.account.password
                                 )
@@ -206,8 +212,11 @@ export default class Webserver {
             }
         })
 
-        this.app.post("/api/file/rename", async (req, res) => {
+        this.app.post("/api/files/rename", async (req, res) => {
             try {
+                if (!req.headers.authorization) {
+                    return res.sendStatus(401)
+                }
                 var token = req.headers.authorization.replace("auth-", "")
                 var userInfo = await this.stateManager.storage.validateToken(
                     token
@@ -232,7 +241,7 @@ export default class Webserver {
                 const new_exists = await this.stateManager.storage.checkFileExistsByName(
                     req.body.new_name
                 )
-                if (!new_exists) {
+                if (new_exists) {
                     return res
                         .status(400)
                         .send("The new filename exists already.")
@@ -253,6 +262,9 @@ export default class Webserver {
 
         this.app.get("/api/files/", async (req, res) => {
             try {
+                if (!req.headers.authorization) {
+                    return res.sendStatus(401)
+                }
                 var token = req.headers.authorization.replace("auth-", "")
                 var userInfo = await this.stateManager.storage.validateToken(
                     token
@@ -275,6 +287,15 @@ export default class Webserver {
 
         this.app.get("/api/file/:file", async (req, res) => {
             try {
+                if (!req.headers.authorization && !req.query.authorization) {
+                    return res.sendStatus(401)
+                } else if (req.query.authorization) {
+                    req.headers.authorization =
+                        "auth-" + req.query.authorization
+                }
+                if (!req.headers.authorization) {
+                    return res.sendStatus(401)
+                }
                 var token = req.headers.authorization.replace("auth-", "")
                 var userInfo = await this.stateManager.storage.validateToken(
                     token
@@ -303,6 +324,11 @@ export default class Webserver {
                 )
                 res.setHeader("X-filename", file.name)
                 res.setHeader("X-upload-date", file.uploaded.toISOString())
+                res.setHeader("Content-Type", "text/x-gcode")
+                res.setHeader(
+                    "Content-Disposition",
+                    'attachment; filename="' + file.name + '"'
+                )
                 res.send(file.data.toString("ascii"))
             } catch (e) {
                 console.error(e)
@@ -312,6 +338,9 @@ export default class Webserver {
 
         this.app.delete("/api/file/:file", async (req, res) => {
             try {
+                if (!req.headers.authorization) {
+                    return res.sendStatus(401)
+                }
                 var token = req.headers.authorization.replace("auth-", "")
                 var userInfo = await this.stateManager.storage.validateToken(
                     token
@@ -347,6 +376,9 @@ export default class Webserver {
 
         this.app.put("/api/files/", async (req, res) => {
             try {
+                if (!req.headers.authorization) {
+                    return res.sendStatus(401)
+                }
                 var token = req.headers.authorization.replace("auth-", "")
                 var userInfo = await this.stateManager.storage.validateToken(
                     token
@@ -375,8 +407,14 @@ export default class Webserver {
                 const exists = await this.stateManager.storage.checkFileExistsByName(
                     file.name
                 )
-                if (exists) {
+                if (
+                    exists &&
+                    (req.headers["x-force-upload"] == null ||
+                        req.headers["x-force-upload"] != "true")
+                ) {
                     return res.status(409).send("This file already exists.")
+                } else if (req.headers["x-force-upload"] == "true") {
+                    await this.stateManager.storage.removeFileByName(file.name)
                 }
                 this.stateManager.storage
                     .insertFile(file.name, file.data)
@@ -512,7 +550,6 @@ export default class Webserver {
             socket.sendJSON({
                 type: "ready",
                 content: {
-                    setup: devices.length == 0,
                     user: {
                         username: socket.userInfo.username,
                         permissions: socket.userInfo.permissions.serialize(),
@@ -573,15 +610,11 @@ export default class Webserver {
         })
         return wss
     }
-    sendTemperatureToClients(data: {
-        tools: { name: number; currentTemp: number; targetTemp: number }[]
-        bed: { currentTemp: number; targetTemp: number }
-        chamber: any
-    }) {
+    sendTemperatureToClients(data: tempInfo) {
         this.wss.clients.forEach(function (socket: ExtWebSocket) {
             socket.sendJSON({
                 type: "temperature_change",
-                data,
+                content: data,
             })
         })
     }

@@ -4,6 +4,7 @@ export default class Printer {
     stateManager: StateManager
     capabilities: Map<string, boolean | string>
     handlers: any[]
+    temperatureInfo: tempInfo
     constructor(
         stateManager: StateManager,
         capabilities: Map<string, boolean | string>
@@ -11,9 +12,13 @@ export default class Printer {
         this.stateManager = stateManager
         this.capabilities = capabilities
         this.handlers = []
+        this.temperatureInfo = null
     }
     registerUpdateHandler(callback: () => void) {
         this.handlers.push(callback)
+    }
+    setTemperatureInfo(data: tempInfo) {
+        this.temperatureInfo = data
     }
     updateCapabilities(capabilities: Map<string, boolean | string>) {
         // if (

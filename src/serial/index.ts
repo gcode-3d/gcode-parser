@@ -38,6 +38,16 @@ export default class SerialConnectionManager {
                 errorDescription: e.message,
             })
         })
+        this.connection.on("close", () => {
+            this.stateManager.updateState(
+                globals.CONNECTIONSTATE.DISCONNECTED,
+                {
+                    disconnectionInfo: {
+                        time: new Date().getTime(),
+                    },
+                }
+            )
+        })
         return this.connection
     }
     send(message: string) {
@@ -208,7 +218,6 @@ export default class SerialConnectionManager {
                         }, 500)
                     })
                     connection.on("error", function (error) {
-                        console.error(error)
                         isWorking = false
                     })
                     connection.open()

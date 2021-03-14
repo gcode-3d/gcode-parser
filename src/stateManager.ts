@@ -43,7 +43,7 @@ export default class StateManager {
             case globals.CONNECTIONSTATE.CONNECTED:
                 return {
                     state: "Connected",
-                    print: null,
+                    description: this.printer.temperatureInfo,
                 }
             case globals.CONNECTIONSTATE.CONNECTING:
                 return {
@@ -78,9 +78,30 @@ export default class StateManager {
         this.webserver.wss.clients.forEach((socket: ExtWebSocket) => {
             socket.sendJSON({
                 type: "state_update",
-                content: state,
-                description: extraDescription || null,
+                content: {
+                    state: getStateName(state),
+                    description: extraDescription || null,
+                },
             })
         })
+    }
+}
+
+function getStateName(state: number) {
+    switch (state) {
+        case globals.CONNECTIONSTATE.CONNECTED:
+            return "Connected"
+        case globals.CONNECTIONSTATE.CONNECTED:
+            return "Connecting"
+        case globals.CONNECTIONSTATE.DISCONNECTED:
+            return "Disconnected"
+        case globals.CONNECTIONSTATE.ERRORED:
+            return "Errored"
+        case globals.CONNECTIONSTATE.FINISHING:
+            return "Finishing"
+        case globals.CONNECTIONSTATE.PREPARING:
+            return "Preparing"
+        case globals.CONNECTIONSTATE.PRINTING:
+            return "Printing"
     }
 }
