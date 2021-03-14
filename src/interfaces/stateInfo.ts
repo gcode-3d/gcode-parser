@@ -1,4 +1,8 @@
 interface stateInfo {
     state: string
-    description?: string | tempInfo
+    description?: string | connectedStateDescription
+}
+
+interface connectedStateDescription {
+    tempData: tempInfo[]
 }

@@ -8,6 +8,7 @@ interface tempInfo {
         currentTemp: number
         targetTemp: number
     }
+    time?: number
 }
 
 interface toolTempInfo {

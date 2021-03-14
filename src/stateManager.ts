@@ -43,7 +43,9 @@ export default class StateManager {
             case globals.CONNECTIONSTATE.CONNECTED:
                 return {
                     state: "Connected",
-                    description: this.printer.temperatureInfo,
+                    description: {
+                        tempData: this.printer.temperatureInfo,
+                    },
                 }
             case globals.CONNECTIONSTATE.CONNECTING:
                 return {

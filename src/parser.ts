@@ -94,11 +94,13 @@ class Parser {
                         tools,
                         bed,
                         chamber,
+                        time: new Date().getTime(),
                     })
                     this.stateManager.webserver.sendTemperatureToClients({
                         tools,
                         bed,
                         chamber,
+                        time: new Date().getTime(),
                     })
                 }
                 break
