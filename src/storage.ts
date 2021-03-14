@@ -154,6 +154,7 @@ export default class Storage {
             })
         })
     }
+
     listDevices(): Promise<Device[]> {
         return new Promise((resolve, reject) => {
             var statement = this.db.prepare("select * from devices")
@@ -169,9 +170,9 @@ export default class Storage {
                             row.width,
                             row.depth,
                             row.height,
-                            row.baud,
                             row.heatedBed,
-                            row.heatedChamber
+                            row.heatedChamber,
+                            row.baud
                         )
                 )
                 return resolve(devices)
