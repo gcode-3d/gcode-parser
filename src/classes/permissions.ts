@@ -33,4 +33,7 @@ export default class Permissions {
         })
         return permissions
     }
+    hasPermission(permissionName: string): boolean {
+        return this.serialize()[permissionName] == true || this.raw == 1
+    }
 }
