@@ -546,7 +546,6 @@ export default class Webserver {
             console.log("[WS][Event] Connection opened with " + socket.id)
 
             const currentState = this.stateManager.getCurrentStateInfo()
-            const devices = await this.stateManager.storage.listDeviceConfigNames()
             socket.sendJSON({
                 type: "ready",
                 content: {

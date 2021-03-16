@@ -54,7 +54,10 @@ export default class StateManager {
             case globals.CONNECTIONSTATE.ERRORED:
                 return {
                     state: "Errored",
-                    description: this.additionalStateInfo.errorDescription,
+                    description: {
+                        errorDescription: this.additionalStateInfo
+                            .errorDescription,
+                    },
                 }
             case globals.CONNECTIONSTATE.PREPARING:
                 return {
