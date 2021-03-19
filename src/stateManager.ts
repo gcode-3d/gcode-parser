@@ -6,13 +6,16 @@ import Storage from "./storage.js"
 import ExtWebSocket from "./interfaces/websocket"
 import SerialConnectionManager from "./serial/index.js"
 import * as config from "../config.json"
+import PrintManager from "./classes/printManager.js"
+import stateInfo from "./interfaces/stateInfo"
 
 export default class StateManager {
-    state: any
+    state: number
     config: config
     printer: Printer | null
     storage: Storage
     connectionManager: SerialConnectionManager
+    printManager: PrintManager
     parser: Parser
     webserver: Webserver
     additionalStateInfo: any
@@ -26,6 +29,7 @@ export default class StateManager {
         this.parser = new Parser(this)
         this.webserver = new Webserver(this)
         this.additionalStateInfo = {}
+        this.printManager = new PrintManager(this)
     }
 
     createPrinter(capabilities: Map<string, boolean | string>) {
@@ -66,9 +70,10 @@ export default class StateManager {
             case globals.CONNECTIONSTATE.PRINTING:
                 return {
                     state: "Printing",
-                    description: this.additionalStateInfo.printInfo
-                        ? this.additionalStateInfo.printInfo
-                        : null,
+                    description: {
+                        printInfo: this.additionalStateInfo.printInfo,
+                        tempData: this.printer.temperatureInfo,
+                    },
                 }
             case globals.CONNECTIONSTATE.FINISHING:
                 return {
@@ -77,7 +82,7 @@ export default class StateManager {
         }
     }
 
-    updateState(state: number, extraDescription: any) {
+    updateState(state: number, extraDescription: stateInfo["description"]) {
         this.state = state
         this.additionalStateInfo = extraDescription
         this.webserver.wss.clients.forEach((socket: ExtWebSocket) => {
@@ -89,6 +94,22 @@ export default class StateManager {
                 },
             })
         })
+    }
+
+    throwError(errorMessage: string) {
+        if (!this.connectionManager.connection.destroyed) {
+            this.connectionManager.connection.close((err) => {
+                if (err) {
+                    this.updateState(globals.CONNECTIONSTATE.ERRORED, {
+                        errorDescription: err.message,
+                    })
+                } else {
+                    this.updateState(globals.CONNECTIONSTATE.ERRORED, {
+                        errorDescription: errorMessage,
+                    })
+                }
+            })
+        }
     }
 }
 

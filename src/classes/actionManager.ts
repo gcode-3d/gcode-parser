@@ -1,4 +1,5 @@
 import connectionUpdateAction from "../actions/stateUpdate"
+import startPrintAction from "../actions/startPrint"
 import StateManager from "../stateManager"
 import UserTokenResult from "./UserTokenResult"
 
@@ -31,6 +32,18 @@ export default class ActionManager {
                         this.stateManager.connectionManager,
                         data.new_state
                     )
+                    break
+                case "print_create":
+                    if (
+                        !userInfo.permissions.hasPermission("print_state.edit")
+                    ) {
+                        return this.stateManager.connectionManager.send(
+                            JSON.stringify({
+                                error: "Unauthorized",
+                            })
+                        )
+                    }
+                    startPrintAction(this.stateManager, data.name)
                     break
                 default:
                     return Promise.reject(action + " action is not valid")

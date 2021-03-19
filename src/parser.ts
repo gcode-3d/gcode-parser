@@ -22,7 +22,7 @@ class Parser {
         code: string,
         responses: string[],
         returnValues: boolean
-    ): Map<string, string | boolean> | tempInfo {
+    ): parsedResponse {
         switch (code) {
             case "M115":
                 const firmwareKeys = responses[0].match(/([A-Z_]+:)/g)
@@ -45,10 +45,12 @@ class Parser {
                         values.set(result[1], result[2] == "1" ? true : false)
                     })
 
+                if (this.stateManager.printer) {
+                    this.stateManager.printer.updateCapabilities(values)
+                }
+
                 if (returnValues == true) {
                     return values
-                } else {
-                    this.stateManager.printer.updateCapabilities(values)
                 }
 
                 break
@@ -104,9 +106,40 @@ class Parser {
                     })
                 }
                 break
+            case "G1":
+            case "G0":
+                let response = responses.filter((i) =>
+                    i.toLowerCase().startsWith("ok")
+                )[0]
+                return {
+                    plannerBufferRemaining: parseInt(
+                        response
+                            .match(/P\d*/i)[0]
+                            .toLowerCase()
+                            .replace("p", "")
+                    ),
+                    unprocessedBufferRemainingSpace: parseInt(
+                        response
+                            .match(/B\d*/i)[0]
+                            .toLowerCase()
+                            .replace("b", "")
+                    ),
+                } as bufferInfo
             default:
-                console.log("Undefined code: " + code)
+            // console.log("Undefined code: " + code)
+            // console.log(`[RESP][${code}] ${responses.join("\n")}`)
         }
+    }
+    parseLineNr(line: string): number {
+        let lineNrMatch = line.match(/N\d+/i)
+        if (!lineNrMatch) {
+            return null
+        }
+
+        if (!isNaN(parseInt(lineNrMatch[0].toLowerCase().replace("n", "")))) {
+            return parseInt(lineNrMatch[0].toLowerCase().replace("n", ""))
+        }
+        return null
     }
 }
 

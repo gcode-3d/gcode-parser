@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "tsc-watch --onSuccess \"cross-env NODE_ENV=development node ./out/src/index.js\"",
+    "debug": "tsc-watch --onSuccess \"cross-env NODE_ENV=development node --inspect ./out/src/index.js\"",
     "production": "tsc && node ./productionInstructions.js && cross-env NODE_ENV=production node ./out/src/index.js"
   },
   "repository": {

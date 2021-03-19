@@ -4,12 +4,18 @@ import GLOBALS from "../globals.js"
 import globals from "../globals.js"
 import Readline from "@serialport/parser-readline"
 import ExtSerialPort from "../interfaces/serialport"
+import PrintInfo from "../classes/printInfo"
+import { printDescription } from "../interfaces/stateInfo"
+import CommandInfo from "../classes/CommandInfo"
 
 export default class SerialConnectionManager {
     stateManager: StateManager
     lastCommand: { code: string | null; responses: string[] }
     connection: ExtSerialPort
     parser: Stream
+    waitCallback?: () => void
+    successCallback?: (result: parsedResponse) => void
+    private isCreating: boolean = false
     constructor(stateManager: StateManager) {
         this.stateManager = stateManager
         // this.config = this.stateManager.storage.
@@ -17,16 +23,13 @@ export default class SerialConnectionManager {
             code: null,
             responses: [],
         }
+
         this.connection = null
     }
 
     openConnection(path: string, baudRate: number) {
         this.connection = new SerialPort(path, { baudRate }) as ExtSerialPort
         this.connection.writeDrain = (data, callback) => {
-            const matches = data.match(/\n?(?:N\d )?(G\d+|M\d+)/)
-            if (matches != null) {
-                this.lastCommand.code = matches[1]
-            }
             this.connection.write(data)
             this.connection.drain(callback)
         }
@@ -50,9 +53,36 @@ export default class SerialConnectionManager {
         })
         return this.connection
     }
-    send(message: string) {
-        this.connection.writeDrain("\n" + message + "\n")
-        this.connection.writeDrain("\n")
+    send(message: string, callback?: (response: parsedResponse) => void) {
+        if (callback == null) {
+            const matches = message.match(/\n?(?:N\d )?(G\d+|M\d+)/)
+            if (matches == null) {
+                console.log("[Invalid gcode] " + message)
+            }
+            if (matches != null) {
+                this.lastCommand.code = matches[1]
+                this.lastCommand.responses.push(message)
+            }
+            this.connection.writeDrain("\n" + message + "\n")
+            this.connection.writeDrain("\n")
+        } else if (
+            this.lastCommand.code != null &&
+            this.lastCommand.responses.filter((i) =>
+                i.trim().toLowerCase().startsWith("ok")
+            ).length == 0
+        ) {
+            this.waitCallback = () => {
+                this.send(message)
+                this.successCallback = (result) => {
+                    callback(result)
+                }
+            }
+        } else {
+            this.send(message)
+            this.successCallback = (result) => {
+                callback(result)
+            }
+        }
     }
 
     handleOpen() {
@@ -61,26 +91,81 @@ export default class SerialConnectionManager {
         this.parser = this.connection.pipe(new Readline())
 
         this.parser.on("data", (data: string) => {
-            if (data.startsWith("ok ") && this.lastCommand.code != null) {
-                this.stateManager.parser.parseResponse(
+            if (
+                data.trim().match(/\s+(ok\s+((P|B|N)\d+\s+)*)?(B|T\d*):\d+/) ==
+                    null &&
+                data.trim().match(/(echo:\s*)?busy:\s*processing/) == null
+            ) {
+                // console.log(data)
+            }
+            if (!this.stateManager.printer) {
+                return
+            }
+            if (data.startsWith("ok") && this.lastCommand.code != null) {
+                this.lastCommand.responses.push(data)
+                let result = this.stateManager.parser.parseResponse(
                     this.lastCommand.code,
                     this.lastCommand.responses,
-                    false
+                    true
                 )
                 const responses = this.lastCommand.responses.join("\n") + data
-                this.stateManager.webserver.sendMessageToClients(responses)
 
-                this.lastCommand.code = null
-                this.lastCommand.responses = []
-            } else if (data.startsWith("ok ")) {
+                if (this.waitCallback != null) {
+                    this.waitCallback()
+                }
+                if (this.successCallback != null) {
+                    this.successCallback(result)
+                }
+                this.stateManager.webserver.sendMessageToClients(responses)
+                this.lastCommand = {
+                    code: null,
+                    responses: [],
+                }
+            } else if (data.startsWith("ok")) {
+                let code = "?"
+                if (
+                    this.stateManager.state ===
+                        globals.CONNECTIONSTATE.PRINTING &&
+                    this.stateManager.parser.parseLineNr(data) != null
+                ) {
+                    let lineNr = this.stateManager.parser.parseLineNr(data)
+                    let commandInfo = this.stateManager.printManager.sentCommands.get(
+                        lineNr
+                    )
+                    const matches = commandInfo.command.match(
+                        /\n?(?:N\d )?(G\d+|M\d+)/
+                    )
+                    if (matches != null) {
+                        code = matches[1]
+                    }
+                }
+
+                if (this.waitCallback != null) {
+                    this.waitCallback()
+                }
+                if (this.successCallback != null) {
+                    let result = this.stateManager.parser.parseResponse(
+                        code,
+                        [data],
+                        true
+                    )
+                    let linenr = this.stateManager.parser.parseLineNr(data)
+                    let commandInfo = this.stateManager.printManager.sentCommands.get(
+                        linenr
+                    )
+                    this.successCallback(result)
+                }
                 return this.stateManager.webserver.sendMessageToClients(data)
+            } else if (data.startsWith("echo")) {
+                console.log("[Echo] " + data)
             } else if (
                 this.stateManager.printer.capabilities.has(
                     "Cap:AUTOREPORT_TEMP"
                 ) &&
                 this.stateManager.printer.capabilities.get(
                     "Cap:AUTOREPORT_TEMP"
-                ) == true
+                ) == true &&
+                data.match(/T\d?:/i) != null
             ) {
                 this.stateManager.parser.parseResponse("M105", [data], false)
             } else if (this.lastCommand.code != null) {
@@ -234,20 +319,29 @@ export default class SerialConnectionManager {
     }
 
     create(path: string, baudrate: number) {
+        if (this.isCreating) {
+            return
+        }
+        this.isCreating = true
         return new Promise((resolve, reject) => {
             if (!baudrate) {
                 this.getBaudrate(path).then((baudrate: boolean | number) => {
                     if (baudrate === false) {
                         return reject("No baudrate combination worked.")
                     }
+                    this.isCreating = false
                     resolve(this.openConnection(path, baudrate as number))
                 })
             } else {
                 this.getCapabilities(path, baudrate)
                     .then(() => {
+                        this.isCreating = false
                         resolve(this.openConnection(path, baudrate))
                     })
-                    .catch(reject)
+                    .catch((e) => {
+                        this.isCreating = false
+                        reject(e)
+                    })
             }
         })
     }
