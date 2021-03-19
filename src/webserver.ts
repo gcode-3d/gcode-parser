@@ -617,11 +617,14 @@ export default class Webserver {
             })
         })
     }
-    sendMessageToClients(data: any) {
+    sendMessageToClients(message: string, type: string) {
         this.wss.clients.forEach(function (socket: ExtWebSocket) {
             socket.sendJSON({
                 type: "message_receive",
-                data,
+                content: {
+                    type,
+                    message,
+                },
             })
         })
     }

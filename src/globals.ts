@@ -21,4 +21,8 @@ export default {
         300,
         110,
     ],
+    TERMINALLINETYPES: {
+        INPUT: "INPUT",
+        OUTPUT: "OUTPUT",
+    },
 }

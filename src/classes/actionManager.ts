@@ -2,6 +2,8 @@ import connectionUpdateAction from "../actions/stateUpdate"
 import startPrintAction from "../actions/startPrint"
 import StateManager from "../stateManager"
 import UserTokenResult from "./UserTokenResult"
+import terminalSendAction from "../actions/terminalSendAction"
+import cancelPrintAction from "../actions/cancelPrint"
 
 export default class ActionManager {
     stateManager: StateManager
@@ -33,6 +35,16 @@ export default class ActionManager {
                         data.new_state
                     )
                     break
+                case "terminal_send":
+                    if (!userInfo.permissions.hasPermission("terminal.send")) {
+                        return this.stateManager.connectionManager.send(
+                            JSON.stringify({
+                                error: "Unauthorized",
+                            })
+                        )
+                    }
+                    terminalSendAction(this.stateManager, data.command)
+                    break
                 case "print_create":
                     if (
                         !userInfo.permissions.hasPermission("print_state.edit")
@@ -44,6 +56,18 @@ export default class ActionManager {
                         )
                     }
                     startPrintAction(this.stateManager, data.name)
+                    break
+                case "print_cancel":
+                    if (
+                        !userInfo.permissions.hasPermission("print_state.edit")
+                    ) {
+                        return this.stateManager.connectionManager.send(
+                            JSON.stringify({
+                                error: "Unauthorized",
+                            })
+                        )
+                    }
+                    cancelPrintAction(this.stateManager)
                     break
                 default:
                     return Promise.reject(action + " action is not valid")

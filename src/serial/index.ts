@@ -61,8 +61,11 @@ export default class SerialConnectionManager {
             }
             if (matches != null) {
                 this.lastCommand.code = matches[1]
-                this.lastCommand.responses.push(message)
             }
+            this.stateManager.webserver.sendMessageToClients(
+                message,
+                globals.TERMINALLINETYPES.INPUT
+            )
             this.connection.writeDrain("\n" + message + "\n")
             this.connection.writeDrain("\n")
         } else if (
@@ -108,7 +111,7 @@ export default class SerialConnectionManager {
                     this.lastCommand.responses,
                     true
                 )
-                const responses = this.lastCommand.responses.join("\n") + data
+                const responses = this.lastCommand.responses.join("\n")
 
                 if (this.waitCallback != null) {
                     this.waitCallback()
@@ -116,7 +119,10 @@ export default class SerialConnectionManager {
                 if (this.successCallback != null) {
                     this.successCallback(result)
                 }
-                this.stateManager.webserver.sendMessageToClients(responses)
+                this.stateManager.webserver.sendMessageToClients(
+                    responses,
+                    globals.TERMINALLINETYPES.OUTPUT
+                )
                 this.lastCommand = {
                     code: null,
                     responses: [],
@@ -155,9 +161,19 @@ export default class SerialConnectionManager {
                     )
                     this.successCallback(result)
                 }
-                return this.stateManager.webserver.sendMessageToClients(data)
+                this.lastCommand = {
+                    code: null,
+                    responses: [],
+                }
+                return this.stateManager.webserver.sendMessageToClients(
+                    data,
+                    globals.TERMINALLINETYPES.OUTPUT
+                )
             } else if (data.startsWith("echo")) {
-                console.log("[Echo] " + data)
+                return this.stateManager.webserver.sendMessageToClients(
+                    data,
+                    globals.TERMINALLINETYPES.OUTPUT
+                )
             } else if (
                 this.stateManager.printer.capabilities.has(
                     "Cap:AUTOREPORT_TEMP"

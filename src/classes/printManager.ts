@@ -61,10 +61,9 @@ export default class PrintManager {
     }
     sendPrintRow() {
         if (this.stateManager.state !== globals.CONNECTIONSTATE.PRINTING) {
-            return console.log("state is incorrect")
+            return
         }
         if (this.currentPrint.getCurrentRow() > this.currentPrintFile.length) {
-            console.log("Finished")
             this.sentCommands = new Map()
             return this.stateManager.updateState(
                 globals.CONNECTIONSTATE.CONNECTED,
@@ -91,12 +90,20 @@ export default class PrintManager {
         }
     }
 
+    cancel() {
+        if (this.stateManager.state === globals.CONNECTIONSTATE.PRINTING) {
+            return this.stateManager.updateState(
+                globals.CONNECTIONSTATE.CONNECTED,
+                null
+            )
+        }
+    }
+
     sendPreparedString(
         linenr: number,
         command: string,
         callback: (response: parsedResponse) => void
     ) {
-        console.log(`[${linenr}] ${command}`)
         this.sentCommands.set(linenr, new CommandInfo(command))
         let preparedString = `N${linenr}${command}`
         preparedString +=
@@ -113,7 +120,7 @@ export default class PrintManager {
 
         return lines
             .map((line) => {
-                return line.trim().replace(/;.*$/, "").replace(" ", "")
+                return line.trim().replace(/;.*$/, "").replace(/\s*/g, "")
             })
             .filter((line) => {
                 return line.length > 0
