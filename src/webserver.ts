@@ -17,7 +17,7 @@ const gitHash = require("child_process")
     .execSync("git rev-parse HEAD")
     .toString()
     .trim()
-let isTestingConnection = false
+import path from "path"
 export default class Webserver {
     app: express.Application
     stateManager: StateManager
@@ -87,13 +87,17 @@ export default class Webserver {
             if (this.isInSetupMode) {
                 setupWizard()
                     .then((location: string) => {
-                        this.app.use(express.static(location))
+                        this.app.use(
+                            express.static(location, { fallthrough: true })
+                        )
                     })
                     .catch((e: Error) => {
                         throw e
                     })
             } else {
-                this.app.use(express.static("build/client"))
+                this.app.use(
+                    express.static("build/client", { fallthrough: true })
+                )
             }
         }
         this.app.get("/api/ping", (_, res) => {
@@ -477,6 +481,30 @@ export default class Webserver {
                             "Something went wrong while logging you in. Try again later.",
                     })
                 })
+        })
+        this.app.use((_, res) => {
+            if (process.env.NODE_ENV === "production") {
+                console.log(this.isInSetupMode)
+                if (this.isInSetupMode) {
+                    setupWizard()
+                        .then((location: string) => {
+                            res.sendFile(path.join(location, "index.html"))
+                        })
+                        .catch((e: Error) => {
+                            throw e
+                        })
+                } else {
+                    console.log("sending file")
+                    res.sendFile(
+                        path.join(
+                            __dirname,
+                            "../../",
+                            "build/client",
+                            "index.html"
+                        )
+                    )
+                }
+            }
         })
     }
 
