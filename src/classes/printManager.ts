@@ -57,14 +57,15 @@ export default class PrintManager {
                     this.currentPrint.file.name
             )
             this.sendPrintRow()
+            resolve()
         })
     }
     sendPrintRow() {
         if (this.stateManager.state !== globals.CONNECTIONSTATE.PRINTING) {
-            return
+            return this.clearLastPrint()
         }
         if (this.currentPrint.getCurrentRow() > this.currentPrintFile.length) {
-            this.sentCommands = new Map()
+            this.clearLastPrint()
             return this.stateManager.updateState(
                 globals.CONNECTIONSTATE.CONNECTED,
                 null
@@ -73,7 +74,6 @@ export default class PrintManager {
 
         if (this.currentPrint.getCurrentRow() == 0) {
             let line = "M110 N0"
-            console.log("Started print - Setting line to 0")
             this.stateManager.connectionManager.send(line, () => {
                 this.currentPrint.nextRow()
                 this.sendPrintRow()
@@ -88,6 +88,12 @@ export default class PrintManager {
                 }
             )
         }
+    }
+
+    private clearLastPrint() {
+        this.sentCommands = new Map()
+        this.currentPrint = null
+        this.currentPrintFile = []
     }
 
     cancel() {
