@@ -61,6 +61,9 @@ export default class PrintManager {
         })
     }
     sendPrintRow() {
+        if (!this.currentPrint) {
+            return
+        }
         if (this.stateManager.state !== globals.CONNECTIONSTATE.PRINTING) {
             return this.clearLastPrint()
         }
