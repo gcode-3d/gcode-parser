@@ -54,6 +54,9 @@ export default class Webserver {
                 "Access-Control-Allow-Headers",
                 "X-Requested-With,content-type, Authorization, X-force-upload"
             )
+            if (req.method === "OPTIONS") {
+                return res.sendStatus(200)
+            }
             next()
         })
         this.stateManager = stateManager

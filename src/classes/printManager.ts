@@ -67,6 +67,7 @@ export default class PrintManager {
         if (this.stateManager.state !== globals.CONNECTIONSTATE.PRINTING) {
             return this.clearLastPrint()
         }
+
         if (this.currentPrint.getCurrentRow() > this.currentPrintFile.length) {
             this.clearLastPrint()
             return this.stateManager.updateState(
@@ -78,6 +79,9 @@ export default class PrintManager {
         if (this.currentPrint.getCurrentRow() == 0) {
             let line = "M110 N0"
             this.stateManager.connectionManager.send(line, () => {
+                if (!this.currentPrint) {
+                    return
+                }
                 this.currentPrint.nextRow()
                 this.sendPrintRow()
             })
@@ -86,6 +90,9 @@ export default class PrintManager {
                 this.currentPrint.getCurrentRow(),
                 this.currentPrintFile[this.currentPrint.getCurrentRow() - 1],
                 (result: parsedResponse) => {
+                    if (!this.currentPrint) {
+                        return
+                    }
                     this.currentPrint.nextRow()
                     this.sendPrintRow()
                 }
