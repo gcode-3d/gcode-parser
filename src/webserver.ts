@@ -9,6 +9,7 @@ import ActionManager from "./classes/actionManager.js"
 import path from "path"
 import { readdir } from "fs"
 import Route from "./classes/route.js"
+import setupWizard from "./tools/setupWizard.js"
 
 export default class Webserver {
     app: express.Application
@@ -43,6 +44,23 @@ export default class Webserver {
     }
 
     createRoutes() {
+        if (process.env.NODE_ENV === "production") {
+            if (this.isInSetupMode) {
+                setupWizard()
+                    .then((location: string) => {
+                        this.app.use(
+                            express.static(location, { fallthrough: true })
+                        )
+                    })
+                    .catch((e: Error) => {
+                        throw e
+                    })
+            } else {
+                this.app.use(
+                    express.static("build/client", { fallthrough: true })
+                )
+            }
+        }
         readdir(path.join(__dirname, "routes"), async (err, routePaths) => {
             if (err) {
                 throw err
@@ -88,6 +106,9 @@ export default class Webserver {
                         route.handler(req, res, this, next)
                     )
                 } else {
+                    console.log(
+                        `[ROUTE] Registering [${route.method}] ` + route.path
+                    )
                     switch (route.method) {
                         case "GET":
                             this.app.get(route.path, (req, res) =>
