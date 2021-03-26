@@ -126,8 +126,15 @@ class Parser {
                     ),
                 } as bufferInfo
             default:
-            // console.log("Undefined code: " + code)
-            // console.log(`[RESP][${code}] ${responses.join("\n")}`)
+                if (
+                    returnValues &&
+                    responses.filter((i) => i.toLowerCase().startsWith("ok"))
+                        .length != 0
+                ) {
+                    return true
+                } else if (returnValues) {
+                    return false
+                }
         }
     }
     parseLineNr(line: string): number {

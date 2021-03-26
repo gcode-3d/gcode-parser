@@ -32,10 +32,11 @@ export default class StateManager {
         this.printManager = new PrintManager(this)
     }
 
-    createPrinter(capabilities: Map<string, boolean | string>) {
-        this.printer = new Printer(this, capabilities)
-
-        this.printer.updateCapabilities(capabilities)
+    createPrinter(capabilities: Map<string, boolean | string>): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.printer = new Printer(this, capabilities)
+            this.printer.manageCapabilityValues().then(resolve).catch(reject)
+        })
     }
 
     getCurrentStateInfo(): stateInfo {

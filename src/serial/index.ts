@@ -10,11 +10,14 @@ import CommandInfo from "../classes/CommandInfo"
 
 export default class SerialConnectionManager {
     stateManager: StateManager
-    lastCommand: { code: string | null; responses: string[] }
+    lastCommand: {
+        code: string | null
+        responses: string[]
+        callback?: (result: parsedResponse) => void
+    }
     connection: ExtSerialPort
     parser: Stream
-    waitCallback?: () => void
-    successCallback?: (result: parsedResponse) => void
+    queue: { message: string; callback?: (result: parsedResponse) => void }[]
     private isCreating: boolean = false
     constructor(stateManager: StateManager) {
         this.stateManager = stateManager
@@ -23,19 +26,33 @@ export default class SerialConnectionManager {
             code: null,
             responses: [],
         }
-
+        this.queue = []
         this.connection = null
     }
 
-    openConnection(path: string, baudRate: number) {
-        this.connection = new SerialPort(path, { baudRate }) as ExtSerialPort
+    openConnection(
+        path: string,
+        connectionInfo: connectionInfo,
+        resultCallback: (err?: Error) => void
+    ) {
+        let hasOpened = false
+        this.connection = new SerialPort(path, {
+            baudRate: connectionInfo.baudRate,
+        }) as ExtSerialPort
         this.connection.writeDrain = (data, callback) => {
             this.connection.write(data)
             this.connection.drain(callback)
         }
-        this.connection.on("open", this.handleOpen.bind(this))
+        this.connection.on("open", () => {
+            this.handleOpen(connectionInfo.capabilities)
+            resultCallback(null)
+            hasOpened = true
+        })
         this.connection.on("error", (e) => {
             console.error(e)
+            if (!hasOpened) {
+                resultCallback(e)
+            }
 
             this.stateManager.updateState(globals.CONNECTIONSTATE.ERRORED, {
                 errorDescription: e.message,
@@ -54,13 +71,14 @@ export default class SerialConnectionManager {
         return this.connection
     }
     send(message: string, callback?: (response: parsedResponse) => void) {
-        if (callback == null) {
+        if (this.lastCommand.code == null) {
             const matches = message.match(/\n?(?:N\d )?(G\d+|M\d+)/)
             if (matches == null) {
                 console.log("[Invalid gcode] " + message)
             }
             if (matches != null) {
                 this.lastCommand.code = matches[1]
+                this.lastCommand.callback = callback
             }
             this.stateManager.webserver.sendMessageToClients(
                 message,
@@ -68,29 +86,15 @@ export default class SerialConnectionManager {
             )
             this.connection.writeDrain("\n" + message + "\n")
             this.connection.writeDrain("\n")
-        } else if (
-            this.lastCommand.code != null &&
-            this.lastCommand.responses.filter((i) =>
-                i.trim().toLowerCase().startsWith("ok")
-            ).length == 0
-        ) {
-            this.waitCallback = () => {
-                this.send(message)
-                this.successCallback = (result) => {
-                    callback(result)
-                }
-            }
         } else {
-            this.send(message)
-            this.successCallback = (result) => {
-                callback(result)
-            }
+            // still waiting on a callback or entries before
+            this.queue.push({ message, callback })
         }
     }
 
-    handleOpen() {
+    async handleOpen(capabilities: Map<string, string | boolean>) {
         this.connection.flush()
-        this.stateManager.updateState(globals.CONNECTIONSTATE.CONNECTED, null)
+
         this.parser = this.connection.pipe(new Readline())
 
         this.parser.on("data", (data: string) => {
@@ -112,20 +116,22 @@ export default class SerialConnectionManager {
                     true
                 )
                 const responses = this.lastCommand.responses.join("\n")
-
-                if (this.waitCallback != null) {
-                    this.waitCallback()
+                if (this.lastCommand.callback != null) {
+                    this.lastCommand.callback(result)
                 }
-                if (this.successCallback != null) {
-                    this.successCallback(result)
+
+                this.lastCommand = {
+                    code: null,
+                    responses: [],
+                    callback: null,
                 }
                 this.stateManager.webserver.sendMessageToClients(
                     responses,
                     globals.TERMINALLINETYPES.OUTPUT
                 )
-                this.lastCommand = {
-                    code: null,
-                    responses: [],
+                if (this.queue.length > 0) {
+                    let entry = this.queue.shift()
+                    this.send(entry.message, entry.callback)
                 }
             } else if (data.startsWith("ok")) {
                 let code = "?"
@@ -146,10 +152,9 @@ export default class SerialConnectionManager {
                     }
                 }
 
-                if (this.waitCallback != null) {
-                    this.waitCallback()
-                }
-                if (this.successCallback != null) {
+                const responses = this.lastCommand.responses.join("\n")
+
+                if (this.lastCommand.callback != null) {
                     let result = this.stateManager.parser.parseResponse(
                         code,
                         [data],
@@ -159,11 +164,15 @@ export default class SerialConnectionManager {
                     let commandInfo = this.stateManager.printManager.sentCommands.get(
                         linenr
                     )
-                    this.successCallback(result)
+                    this.lastCommand.callback(result)
                 }
                 this.lastCommand = {
                     code: null,
                     responses: [],
+                }
+                if (this.queue.length > 0) {
+                    let entry = this.queue.shift()
+                    this.send(entry.message, entry.callback)
                 }
                 return this.stateManager.webserver.sendMessageToClients(
                     data,
@@ -188,6 +197,37 @@ export default class SerialConnectionManager {
                 this.lastCommand.responses.push(data)
             }
         })
+        try {
+            this.stateManager.updateState(
+                globals.CONNECTIONSTATE.CONNECTING,
+                null
+            )
+            await this.stateManager.createPrinter(capabilities)
+            this.stateManager.updateState(
+                globals.CONNECTIONSTATE.CONNECTED,
+                null
+            )
+            this.send("G90", (result) => {
+                if (result == true) {
+                    this.stateManager.updateState(
+                        globals.CONNECTIONSTATE.CONNECTED,
+                        null
+                    )
+                } else {
+                    this.connection.close()
+                    this.stateManager.updateState(
+                        globals.CONNECTIONSTATE.ERRORED,
+                        {
+                            errorDescription:
+                                "Error occurred while setting printer to absolute mode.",
+                        }
+                    )
+                }
+            })
+        } catch (e) {
+            console.error(e)
+            return
+        }
     }
 
     getCapabilities(
@@ -208,8 +248,6 @@ export default class SerialConnectionManager {
                         result.responses,
                         true
                     ) as Map<string, string | boolean>
-                    this.stateManager.createPrinter(capabilities)
-
                     return resolve({
                         isWorking: true,
                         capabilities,
@@ -219,9 +257,10 @@ export default class SerialConnectionManager {
         })
     }
 
-    getBaudrate(path: string): Promise<boolean | number> {
+    getBaudrate(path: string): Promise<boolean | connectionInfo> {
         return new Promise(async (resolve) => {
             let resultBaudrate = 0
+            let capabilities
             for (let baudrate of GLOBALS.BAUD.slice(0)) {
                 if (resultBaudrate != 0) {
                     break
@@ -230,9 +269,17 @@ export default class SerialConnectionManager {
                 const result = await this.getCapabilities(path, baudrate)
                 if (result.isWorking == true) {
                     resultBaudrate = baudrate
+                    capabilities = result.capabilities
                 }
             }
-            resolve(resultBaudrate == 0 ? false : resultBaudrate)
+            resolve(
+                resultBaudrate == 0
+                    ? false
+                    : {
+                          baudRate: resultBaudrate,
+                          capabilities,
+                      }
+            )
         })
     }
 
@@ -273,65 +320,82 @@ export default class SerialConnectionManager {
         path: string,
         baudRate: number
     ): Promise<baudRateResponses> {
-        return new Promise(
-            function (resolve: (arg0: baudRateResponses) => void) {
-                let connection = new SerialPort(path, {
-                    baudRate,
-                    autoOpen: false,
-                })
-                let responses: string[] = []
+        return new Promise((resolve: (arg0: baudRateResponses) => void) => {
+            let connection = new SerialPort(path, {
+                baudRate,
+                autoOpen: false,
+            })
+            let responses: string[] = []
 
-                try {
-                    var isWorking = false
-                    var timeout: NodeJS.Timeout
+            try {
+                var isWorking = false
+                var timeout: NodeJS.Timeout
 
-                    setTimeout(function () {
-                        connection.close(() => {
-                            resolve({
-                                isWorking,
-                                responses,
-                            })
-                        })
-                    }, 2000)
-
-                    const parser = connection.pipe(new Readline())
-                    connection.on("open", function () {
-                        connection.flush()
-
-                        connection.on("data", function (data) {
-                            if (
-                                data
-                                    .toString()
-                                    .trim()
-                                    .startsWith("FIRMWARE_NAME:")
-                            ) {
-                                isWorking = true
-                            }
-                        })
-                        parser.on("data", function (data: string) {
-                            responses.push(data)
-                        })
-
-                        timeout = setTimeout(function () {
-                            connection.write("\nM115\n", function () {
-                                connection.drain()
-                            })
-                        }, 500)
-                    })
-                    connection.on("error", function (error) {
-                        isWorking = false
-                    })
-                    connection.open()
-                } catch (e) {
-                    console.error(e)
-                    isWorking = false
-                    clearTimeout(timeout)
+                setTimeout(function () {
                     connection.close(() => {
-                        resolve({ isWorking, responses: [] })
+                        resolve({
+                            isWorking,
+                            responses,
+                        })
                     })
+                }, 2000)
+
+                const parser = connection.pipe(new Readline())
+                connection.on("open", () => {
+                    connection.flush()
+
+                    connection.on("data", function (data) {
+                        if (
+                            data.toString().trim().startsWith("FIRMWARE_NAME:")
+                        ) {
+                            isWorking = true
+                        }
+                    })
+                    parser.on("data", function (data: string) {
+                        // Remove lines that are auto-reported temperatures.
+                        if (data.trim().match(/^T\d?:\d+\.\d+/i) == null) {
+                            responses.push(data)
+                        }
+                    })
+
+                    timeout = setTimeout(async () => {
+                        await this.writeDrainConnectionAsync(
+                            connection,
+                            "\nM115\n"
+                        )
+                    }, 500)
+                })
+                connection.on("error", function (error) {
+                    isWorking = false
+                })
+                connection.open()
+            } catch (e) {
+                console.error(e)
+                isWorking = false
+                clearTimeout(timeout)
+                connection.close(() => {
+                    resolve({ isWorking, responses: [] })
+                })
+            }
+        })
+    }
+    private writeDrainConnectionAsync(
+        connection: SerialPort,
+        data: string
+    ): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            connection.write(data, (err) => {
+                if (err) {
+                    return reject(err)
                 }
-            }.bind(this)
-        )
+                connection.drain((err) => {
+                    if (err) {
+                        return reject(err)
+                    }
+                    resolve()
+                })
+            })
+        })
     }
 
     create(path: string, baudrate: number) {
@@ -339,20 +403,41 @@ export default class SerialConnectionManager {
             return
         }
         this.isCreating = true
-        return new Promise((resolve, reject) => {
+        return new Promise<void>((resolve, reject) => {
             if (!baudrate) {
-                this.getBaudrate(path).then((baudrate: boolean | number) => {
-                    if (baudrate === false) {
+                this.getBaudrate(path).then((connectionInfo) => {
+                    if (connectionInfo === false) {
                         return reject("No baudrate combination worked.")
                     }
+                    connectionInfo = connectionInfo as connectionInfo
                     this.isCreating = false
-                    resolve(this.openConnection(path, baudrate as number))
+                    this.openConnection(path, connectionInfo, (err) => {
+                        if (err) {
+                            reject(err)
+                        } else {
+                            resolve()
+                        }
+                    })
                 })
             } else {
                 this.getCapabilities(path, baudrate)
-                    .then(() => {
+                    .then((capabilitiesResponse) => {
+                        let connectionInfo: connectionInfo = {
+                            baudRate: baudrate,
+                            capabilities: capabilitiesResponse.capabilities,
+                        }
                         this.isCreating = false
-                        resolve(this.openConnection(path, baudrate))
+                        this.openConnection(
+                            path,
+                            connectionInfo,
+                            (err: Error) => {
+                                if (err) {
+                                    reject(err)
+                                } else {
+                                    resolve()
+                                }
+                            }
+                        )
                     })
                     .catch((e) => {
                         this.isCreating = false

@@ -23,23 +23,73 @@ export default class Printer {
             this.temperatureInfo.shift()
         }
     }
+    async manageCapabilityValues() {
+        let capabilities = Array.from(this.capabilities)
+        return new Promise<void>(async (resolve, reject) => {
+            try {
+                for (let i = 0; i < capabilities.length; i++) {
+                    let key = capabilities[i][0]
+                    let value = capabilities[i][1]
+                    await new Promise<void>((resolve, reject) => {
+                        switch (key) {
+                            case "FIRMWARE_NAME":
+                                if (
+                                    !(this.capabilities.get(
+                                        "FIRMWARE_NAME"
+                                    ) as string)
+                                        .toLowerCase()
+                                        .includes("marlin")
+                                ) {
+                                    console.warn(
+                                        "[WARN] Printer doesn't indicate to be using Marlin. This software is build only for Marlin. Use at own risk."
+                                    )
+                                }
+                                break
+                            case "Cap:EEPROM":
+                                if (value == true) {
+                                    return this.stateManager.connectionManager.send(
+                                        "M501",
+                                        (response) => {
+                                            if (response === true) {
+                                                resolve()
+                                            } else {
+                                                reject(
+                                                    "[ERROR][CAPABILITIES] Setting up EEPROM CAP returned the following unexpected code: " +
+                                                        response
+                                                )
+                                            }
+                                        }
+                                    )
+                                }
+                                break
+                            case "Cap:AUTOREPORT_TEMP":
+                                if (value == true) {
+                                    return this.stateManager.connectionManager.send(
+                                        "M155S2",
+                                        (response) => {
+                                            if (response === true) {
+                                                resolve()
+                                            } else {
+                                                reject(
+                                                    "[ERROR][CAPABILITIES] Setting up AUTOREPORT_TEMP CAP returned the following unexpected code: " +
+                                                        response
+                                                )
+                                            }
+                                        }
+                                    )
+                                }
+                        }
+                        return resolve()
+                    })
+                }
+                return resolve()
+            } catch (e) {
+                reject(e)
+            }
+        })
+    }
     updateCapabilities(capabilities: Map<string, boolean | string>) {
-        // if (
-        //     (capabilities.has("Cap:AUTOREPORT_TEMP") &&
-        //     capabilities.get("Cap:AUTOREPORT_TEMP") == false) && this
-        // ) {
-        // 	if (this.loops.tempReport == null)
-        //     this.loops.tempReport = setInterval(this.reportTemp(), 1000)
-        // } else if (
-        //     capabilities.has("Cap:AUTOREPORT_TEMP") &&
-        //     capabilities.get("Cap:AUTOREPORT_TEMP") == true
-        // ) {
-        // 	//
-        // } else if (this.loops.tempReport != null) {
-        // 	this.
-        // } else {
-        //     this.loops.tempReport = setInterval(this.reportTemp(), 1000)
-        // }
+        this.capabilities = capabilities
     }
     reportTemp() {
         this.stateManager.connectionManager.send("M105")

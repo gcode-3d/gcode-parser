@@ -129,7 +129,7 @@ export default class Webserver {
 
                     this.stateManager.connectionManager
                         .getBaudrate(devicePath)
-                        .then(async (result: Boolean | number) => {
+                        .then(async (result: connectionInfo | boolean) => {
                             if (result == false) {
                                 return res.status(500).json({
                                     error: true,
