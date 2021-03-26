@@ -1,23 +1,15 @@
 import express from "express"
 import { v4 as uuid } from "uuid"
 import WebSocket from "ws"
-import fileUpload, { UploadedFile } from "express-fileupload"
-import bodyParser from "body-parser"
-import loginScheme from "./schemes/login.js"
-import setupScheme from "./schemes/setupNew.js"
 import { IncomingMessage, Server } from "http"
 import StateManager from "./stateManager.js"
 import ExtWebSocket from "./interfaces/websocket"
 import { Socket } from "net"
 import ActionManager from "./classes/actionManager.js"
-import UserTokenResult from "./classes/UserTokenResult.js"
-import Device from "./classes/device.js"
-import setupWizard from "./tools/setupWizard.js"
-const gitHash = require("child_process")
-    .execSync("git rev-parse HEAD")
-    .toString()
-    .trim()
 import path from "path"
+import { readdir } from "fs"
+import Route from "./classes/route.js"
+
 export default class Webserver {
     app: express.Application
     stateManager: StateManager
@@ -28,37 +20,7 @@ export default class Webserver {
     constructor(stateManager: StateManager) {
         this.isInSetupMode = false
         this.app = express()
-        this.app.use(
-            bodyParser.urlencoded({
-                extended: true,
-                limit: 3000,
-                parameterLimit: 10,
-            })
-        )
-        this.app.use(bodyParser.json())
-        this.app.use(
-            fileUpload({
-                limits: 20 * 1024 * 1024,
-            })
-        )
-        this.app.use(function (req, res, next) {
-            res.setHeader("Access-Control-Allow-Origin", "*")
-            if (req.url.startsWith("/api/files")) {
-                res.setHeader("Access-Control-Allow-Methods", "GET, PUT")
-            } else if (req.url.startsWith("/api/file")) {
-                res.setHeader("Access-Control-Allow-Methods", "GET, DELETE")
-            } else {
-                res.setHeader("Access-Control-Allow-Methods", "GET, POST")
-            }
-            res.setHeader(
-                "Access-Control-Allow-Headers",
-                "X-Requested-With,content-type, Authorization, X-force-upload"
-            )
-            if (req.method === "OPTIONS") {
-                return res.sendStatus(200)
-            }
-            next()
-        })
+
         this.stateManager = stateManager
         this.actionManager = new ActionManager(this.stateManager)
         this.stateManager.storage
@@ -81,433 +43,82 @@ export default class Webserver {
     }
 
     createRoutes() {
-        if (process.env.NODE_ENV === "production") {
-            this.app.use((_, res, next) => {
-                res.setHeader("X-Version", gitHash)
-                next()
+        readdir(path.join(__dirname, "routes"), async (err, routePaths) => {
+            if (err) {
+                throw err
+            }
+            let routes: { default: Route }[] = await Promise.all(
+                routePaths.map(
+                    (route) => import(path.join(__dirname, "routes", route))
+                )
+            )
+            routes = routes.filter((route) =>
+                this.isInSetupMode == true
+                    ? route.default.setupType > 0
+                    : route.default.setupType != 1
+            )
+            let routeTypes = {
+                // Middleware that should be registered before routes are registered
+                middlewareBeforeRegistering: routes.filter(
+                    (route) =>
+                        route.default.method === "MIDDLEWARE" &&
+                        route.default.path == "1"
+                ),
+                // Middleware that should be registered after routes are registered
+                middlewareAfterRegistering: routes.filter(
+                    (route) =>
+                        route.default.method === "MIDDLEWARE" &&
+                        route.default.path == "-1"
+                ),
+                // Regular routes.
+                regular: routes.filter(
+                    (route) => route.default.method !== "MIDDLEWARE"
+                ),
+            }
+            routes = [
+                ...routeTypes.middlewareBeforeRegistering,
+                ...routeTypes.regular,
+                ...routeTypes.middlewareAfterRegistering,
+            ]
+
+            routes.forEach((routeObject) => {
+                let route = routeObject.default
+                if (route.method === "MIDDLEWARE") {
+                    this.app.use((req, res, next) =>
+                        route.handler(req, res, this, next)
+                    )
+                } else {
+                    switch (route.method) {
+                        case "GET":
+                            this.app.get(route.path, (req, res) =>
+                                route.handler(req, res, this)
+                            )
+                            break
+                        case "POST":
+                            this.app.post(route.path, (req, res) =>
+                                route.handler(req, res, this)
+                            )
+                            break
+                        case "DELETE":
+                            this.app.delete(route.path, (req, res) =>
+                                route.handler(req, res, this)
+                            )
+                            break
+                        case "PUT":
+                            this.app.put(route.path, (req, res) =>
+                                route.handler(req, res, this)
+                            )
+                            break
+                        default:
+                            throw (
+                                "Route " +
+                                route.path +
+                                " uses unknown method " +
+                                route.method
+                            )
+                    }
+                }
             })
-
-            if (this.isInSetupMode) {
-                setupWizard()
-                    .then((location: string) => {
-                        this.app.use(
-                            express.static(location, { fallthrough: true })
-                        )
-                    })
-                    .catch((e: Error) => {
-                        throw e
-                    })
-            } else {
-                this.app.use(
-                    express.static("build/client", { fallthrough: true })
-                )
-            }
-        }
-        this.app.get("/api/ping", (_, res) => {
-            res.status(200).send("Pong")
-        })
-
-        this.app.post("/api/submitSetup", async (req, res) => {
-            setupScheme
-                .validateAsync(req.body)
-                .then(async (data) => {
-                    try {
-                        let result = await this.stateManager.storage.needsSetup()
-                        if (!result) {
-                            console.log(
-                                "[Setup] Setup not required but still got call to /api/submitSetup"
-                            )
-                            return res.sendStatus(403)
-                        }
-                    } catch (e) {
-                        console.error(e)
-                        res.sendStatus(500)
-                    }
-                    let devicePath = data.device.path.startsWith("COM")
-                        ? "\\\\.\\" + data.device.path
-                        : data.device.path
-
-                    this.stateManager.connectionManager
-                        .getBaudrate(devicePath)
-                        .then(async (result: connectionInfo | boolean) => {
-                            if (result == false) {
-                                return res.status(500).json({
-                                    error: true,
-                                    message:
-                                        "Could not communicate with device using any of the default baudrates",
-                                })
-                            }
-
-                            let device = new Device(
-                                data.printInfo.printerName,
-                                devicePath,
-                                data.printInfo.xValue,
-                                data.printInfo.yValue,
-                                data.printInfo.zValue,
-                                data.printInfo.heatedBed,
-                                data.printInfo.heatedChamber,
-                                result.toString()
-                            )
-                            try {
-                                await this.stateManager.storage.saveUser(
-                                    data.account.username,
-                                    data.account.password
-                                )
-                                await this.stateManager.storage.saveDevice(
-                                    device
-                                )
-                                res.sendStatus(200)
-                                // exit program to restart
-                                console.log(
-                                    "[Setup] Setup completed, restarting.."
-                                )
-                                process.exit()
-                            } catch (e) {
-                                console.error(e)
-                                return res.sendStatus(500)
-                            }
-                        })
-                })
-                .catch((e) => {
-                    console.error(e)
-                    return res.sendStatus(500)
-                })
-        })
-
-        this.app.get("/api/fetchDevices", async (req, res) => {
-            try {
-                let userInfo
-
-                if (!this.isInSetupMode) {
-                    if (!req.headers.authorization) {
-                        return res.sendStatus(401)
-                    }
-                    if (!req.headers.authorization.startsWith("auth-")) {
-                        return res.sendStatus(401)
-                    }
-                    var token = req.headers.authorization.replace("auth-", "")
-                    userInfo = await this.stateManager.storage.validateToken(
-                        token
-                    )
-                } else {
-                    userInfo = new UserTokenResult("SETUP", null, 1)
-                }
-                if (!userInfo) {
-                    return res.sendStatus(401)
-                }
-                userInfo = userInfo as UserTokenResult
-                const permissions = userInfo.permissions.serialize()
-                if (
-                    permissions["admin"] ||
-                    (permissions["connection.edit"] &&
-                        permissions["settings.edit"])
-                ) {
-                    this.stateManager.connectionManager
-                        .list()
-                        .then((list: any) => {
-                            return res.json(list)
-                        })
-                        .catch((e: any) => {
-                            console.error(e)
-                        })
-                } else {
-                    return res.sendStatus(403)
-                }
-            } catch (e) {
-                console.error(e)
-                res.sendStatus(500)
-            }
-        })
-
-        this.app.post("/api/files/rename", async (req, res) => {
-            try {
-                if (!req.headers.authorization) {
-                    return res.sendStatus(401)
-                }
-                var token = req.headers.authorization.replace("auth-", "")
-                var userInfo = await this.stateManager.storage.validateToken(
-                    token
-                )
-                if (!userInfo) {
-                    return res.sendStatus(401)
-                }
-                userInfo = userInfo as UserTokenResult
-                const permissions = userInfo.permissions.serialize()
-                if (!permissions["file.edit"] && !permissions["admin"]) {
-                    return res.sendStatus(401)
-                }
-                if (!req.body || !req.body.new_name || !req.body.old_name) {
-                    return res.sendStatus(400)
-                }
-                const old_exists = await this.stateManager.storage.checkFileExistsByName(
-                    req.body.old_name
-                )
-                if (!old_exists) {
-                    return res.status(404).send("This file doesn't exist.")
-                }
-                const new_exists = await this.stateManager.storage.checkFileExistsByName(
-                    req.body.new_name
-                )
-                if (new_exists) {
-                    return res
-                        .status(400)
-                        .send("The new filename exists already.")
-                }
-                if (new TextEncoder().encode(req.body.new_name).length > 250) {
-                    return res.status(400).send("New filename is too large")
-                }
-                await this.stateManager.storage.updateFileName(
-                    req.body.old_name,
-                    req.body.new_name
-                )
-                res.sendStatus(200)
-            } catch (e) {
-                console.error(e)
-                return res.sendStatus(500)
-            }
-        })
-
-        this.app.get("/api/files/", async (req, res) => {
-            try {
-                if (!req.headers.authorization) {
-                    return res.sendStatus(401)
-                }
-                var token = req.headers.authorization.replace("auth-", "")
-                var userInfo = await this.stateManager.storage.validateToken(
-                    token
-                )
-                if (!userInfo) {
-                    return res.sendStatus(401)
-                }
-                userInfo = userInfo as UserTokenResult
-                const permissions = userInfo.permissions.serialize()
-                if (!permissions["file.access"] && !permissions["admin"]) {
-                    return res.sendStatus(401)
-                }
-                var files = await this.stateManager.storage.getFileList()
-                return res.json(files)
-            } catch (e) {
-                console.error(e)
-                return res.sendStatus(500)
-            }
-        })
-
-        this.app.get("/api/file/:file", async (req, res) => {
-            try {
-                if (!req.headers.authorization && !req.query.authorization) {
-                    return res.sendStatus(401)
-                } else if (req.query.authorization) {
-                    req.headers.authorization =
-                        "auth-" + req.query.authorization
-                }
-                if (!req.headers.authorization) {
-                    return res.sendStatus(401)
-                }
-                var token = req.headers.authorization.replace("auth-", "")
-                var userInfo = await this.stateManager.storage.validateToken(
-                    token
-                )
-                if (!userInfo) {
-                    return res.sendStatus(401)
-                }
-                userInfo = userInfo as UserTokenResult
-                const permissions = userInfo.permissions.serialize()
-                if (!permissions["file.access"] && !permissions["admin"]) {
-                    return res.sendStatus(401)
-                }
-                if (!req.params.file) {
-                    return res.sendStatus(400)
-                }
-
-                const exists = await this.stateManager.storage.checkFileExistsByName(
-                    req.params.file
-                )
-                if (!exists) {
-                    return res.status(404).send("This file doesn't exist.")
-                }
-
-                var file = await this.stateManager.storage.getFileByName(
-                    req.params.file
-                )
-                res.setHeader("X-filename", file.name)
-                res.setHeader("X-upload-date", file.uploaded.toISOString())
-                res.setHeader("Content-Type", "text/x-gcode")
-                res.setHeader(
-                    "Content-Disposition",
-                    'attachment; filename="' + file.name + '"'
-                )
-                res.send(file.data.toString("ascii"))
-            } catch (e) {
-                console.error(e)
-                return res.sendStatus(500)
-            }
-        })
-
-        this.app.delete("/api/file/:file", async (req, res) => {
-            try {
-                if (!req.headers.authorization) {
-                    return res.sendStatus(401)
-                }
-                var token = req.headers.authorization.replace("auth-", "")
-                var userInfo = await this.stateManager.storage.validateToken(
-                    token
-                )
-                if (!userInfo) {
-                    return res.sendStatus(401)
-                }
-                userInfo = userInfo as UserTokenResult
-                const permissions = userInfo.permissions.serialize()
-                if (!permissions["file.edit"] && !permissions["admin"]) {
-                    return res.sendStatus(401)
-                }
-                if (!req.params.file) {
-                    return res.sendStatus(400)
-                }
-
-                const exists = await this.stateManager.storage.checkFileExistsByName(
-                    req.params.file
-                )
-                if (!exists) {
-                    return res.status(404).send("This file doesn't exist.")
-                }
-
-                await this.stateManager.storage.removeFileByName(
-                    req.params.file
-                )
-                res.sendStatus(200)
-            } catch (e) {
-                console.error(e)
-                return res.sendStatus(500)
-            }
-        })
-
-        this.app.put("/api/files/", async (req, res) => {
-            try {
-                if (!req.headers.authorization) {
-                    return res.sendStatus(401)
-                }
-                var token = req.headers.authorization.replace("auth-", "")
-                var userInfo = await this.stateManager.storage.validateToken(
-                    token
-                )
-                if (!userInfo) {
-                    return res.sendStatus(401)
-                }
-                userInfo = userInfo as UserTokenResult
-                const permissions = userInfo.permissions.serialize()
-                if (!permissions["file.edit"] && !permissions["admin"]) {
-                    return res.sendStatus(401)
-                }
-
-                if (!req.files || Object.keys(req.files).length === 0) {
-                    return res.status(400).send("No files were uploaded.")
-                } else if (Object.keys(req.files).length !== 1) {
-                    return res.status(400).send("Only upload 1 file at a time.")
-                } else if (!req.files["file"]) {
-                    return res.status(400).send("NO files were uploaded.")
-                }
-
-                let file = req.files["file"] as UploadedFile
-                if (file.truncated) {
-                    return res.sendStatus(413)
-                }
-                const exists = await this.stateManager.storage.checkFileExistsByName(
-                    file.name
-                )
-                if (
-                    exists &&
-                    (req.headers["x-force-upload"] == null ||
-                        req.headers["x-force-upload"] != "true")
-                ) {
-                    return res.status(409).send("This file already exists.")
-                } else if (req.headers["x-force-upload"] == "true") {
-                    await this.stateManager.storage.removeFileByName(file.name)
-                }
-                this.stateManager.storage
-                    .insertFile(file.name, file.data)
-                    .then(() => {
-                        res.sendStatus(200)
-                    })
-                    .catch((e) => {
-                        console.error(e)
-                        res.sendStatus(500)
-                    })
-            } catch (e) {
-                console.error(e)
-                res.sendStatus(500)
-            }
-        })
-
-        this.app.post("/api/login", (req, res) => {
-            loginScheme
-                .validateAsync(req.body)
-                .then(async (value) => {
-                    let date = new Date(value.datetime)
-                    let dateDiff = new Date().getTime() - date.getTime()
-                    if (dateDiff > 5000 || dateDiff < 0) {
-                        return res.sendStatus(400)
-                    }
-
-                    var result = await this.stateManager.storage.validateUser(
-                        value.username,
-                        value.password
-                    )
-                    if (!result) {
-                        return res.json({
-                            error: true,
-                            message: "Invalid username / password",
-                        })
-                    }
-                    var token = await this.stateManager.storage.generateNewToken(
-                        value.username,
-                        value.remember
-                    )
-                    // pass token to client
-                    return res.json({ token })
-                })
-                .catch((e: any) => {
-                    console.log(e)
-                    if (e.details) {
-                        let detail = e.details[0]
-                        if (detail.context.key == "datetime") {
-                            return res.sendStatus(400)
-                        } else {
-                            return res.json({
-                                error: true,
-                                message: detail.message.replace(/"/g, ""),
-                            })
-                        }
-                    }
-                    return res.json({
-                        error: true,
-                        message:
-                            "Something went wrong while logging you in. Try again later.",
-                    })
-                })
-        })
-        this.app.use((_, res) => {
-            if (process.env.NODE_ENV === "production") {
-                console.log(this.isInSetupMode)
-                if (this.isInSetupMode) {
-                    setupWizard()
-                        .then((location: string) => {
-                            res.sendFile(path.join(location, "index.html"))
-                        })
-                        .catch((e: Error) => {
-                            throw e
-                        })
-                } else {
-                    console.log("sending file")
-                    res.sendFile(
-                        path.join(
-                            __dirname,
-                            "../../",
-                            "build/client",
-                            "index.html"
-                        )
-                    )
-                }
-            }
         })
     }
 
