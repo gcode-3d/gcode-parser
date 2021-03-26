@@ -2,7 +2,7 @@ import Route from "../classes/route"
 import UserTokenResult from "../classes/UserTokenResult"
 import { UploadedFile } from "express-fileupload"
 
-export default new Route("/api/files", "PUT", 1, async (req, res, server) => {
+export default new Route("/api/files", "PUT", 0, async (req, res, server) => {
     try {
         if (!req.headers.authorization) {
             return res.sendStatus(401)
