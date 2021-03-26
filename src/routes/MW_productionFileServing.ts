@@ -21,7 +21,7 @@ export default new Route("-1", "MIDDLEWARE", 2, (_, res, server) => {
                 })
         } else {
             res.sendFile(
-                path.join(__dirname, "../../", "build/client", "index.html")
+                path.join(__dirname, "../../../", "build/client", "index.html")
             )
         }
     }
