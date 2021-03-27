@@ -1,7 +1,7 @@
 import Route from "../classes/route"
 import loginScheme from "../schemes/login"
 
-export default new Route("/api/login", "POST", 1, (req, res, server) => {
+export default new Route("/api/login", "POST", 0, (req, res, server) => {
     loginScheme
         .validateAsync(req.body)
         .then(async (value) => {
