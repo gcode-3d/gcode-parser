@@ -50,12 +50,21 @@ export default function connectionUpdateAction(
                     .listDevices()
                     .then((devices) => {
                         if (devices.length > 0) {
-                            connectionManager.create(
-                                devices[0].path,
-                                isNaN(parseInt(devices[0].baud))
-                                    ? null
-                                    : parseInt(devices[0].baud)
-                            )
+                            connectionManager
+                                .create(
+                                    devices[0].path,
+                                    isNaN(parseInt(devices[0].baud))
+                                        ? null
+                                        : parseInt(devices[0].baud)
+                                )
+                                .catch((e) => {
+                                    connectionManager.stateManager.updateState(
+                                        globals.CONNECTIONSTATE.ERRORED,
+                                        {
+                                            errorDescription: e.message,
+                                        }
+                                    )
+                                })
                         }
                     })
             }
