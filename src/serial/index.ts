@@ -7,6 +7,7 @@ import ExtSerialPort from "../interfaces/serialport"
 import PrintInfo from "../classes/printInfo"
 import { printDescription } from "../interfaces/stateInfo"
 import CommandInfo from "../classes/CommandInfo"
+import LogPriority from "../enums/logPriority"
 
 export default class SerialConnectionManager {
     stateManager: StateManager
@@ -18,6 +19,7 @@ export default class SerialConnectionManager {
     connection: ExtSerialPort
     parser: Stream
     queue: { message: string; callback?: (result: parsedResponse) => void }[]
+    private sentCommandsWithLineNr: Map<number, string> = new Map()
     private isCreating: boolean = false
     constructor(stateManager: StateManager) {
         this.stateManager = stateManager
@@ -72,18 +74,25 @@ export default class SerialConnectionManager {
     }
     send(message: string, callback?: (response: parsedResponse) => void) {
         if (this.lastCommand.code == null) {
-            const matches = message.match(/\n?(?:N\d )?(G\d+|M\d+)/)
+            const matches = message.match(/\n?(N\d ?)?(G\d+|M\d+)/)
             if (matches == null) {
                 console.log("[Invalid gcode] " + message)
             }
             if (matches != null) {
-                this.lastCommand.code = matches[1]
+                this.lastCommand.code = matches[2]
                 this.lastCommand.callback = callback
             }
             this.stateManager.webserver.sendMessageToClients(
                 message,
                 globals.TERMINALLINETYPES.INPUT
             )
+            if (matches[1] != null) {
+                this.sentCommandsWithLineNr.set(
+                    parseInt(matches[1].slice(1)),
+                    message
+                )
+            }
+
             this.connection.writeDrain("\n" + message + "\n")
             this.connection.writeDrain("\n")
         } else {
@@ -97,7 +106,7 @@ export default class SerialConnectionManager {
 
         this.parser = this.connection.pipe(new Readline())
 
-        this.parser.on("data", (data: string) => {
+        this.parser.on("data", async (data: string) => {
             if (
                 data.trim().match(/\s+(ok\s+((P|B|N)\d+\s+)*)?(B|T\d*):\d+/) ==
                     null &&
@@ -105,7 +114,38 @@ export default class SerialConnectionManager {
             ) {
                 // console.log(data)
             }
-            if (!this.stateManager.printer) {
+            if (
+                !this.stateManager.printer ||
+                !this.stateManager.printer.capabilities
+            ) {
+                return
+            }
+            if (data.startsWith("Error")) {
+                return console.error(data)
+            }
+            if (data.toLowerCase().startsWith("resend: ")) {
+                let resendCode = parseInt(data.match(/Resend: (\d+)/i)[1])
+                if (this.sentCommandsWithLineNr.has(resendCode)) {
+                    let callback = null
+                    if (this.lastCommand.callback != null) {
+                        callback = this.lastCommand.callback
+                    }
+                    this.send(
+                        this.sentCommandsWithLineNr.get(resendCode),
+                        this.lastCommand.callback
+                    )
+                } else {
+                    await this.stateManager.storage.log(
+                        LogPriority.Warning,
+                        "RESEND_WARN",
+                        "Line number expected which isn't stored. Expected lineNr: " +
+                            resendCode
+                    )
+                    console.warn(
+                        "Line number expected which isn't stored. Expected lineNr: " +
+                            resendCode
+                    )
+                }
                 return
             }
             if (data.startsWith("ok") && this.lastCommand.code != null) {
@@ -131,7 +171,22 @@ export default class SerialConnectionManager {
                 )
                 if (this.queue.length > 0) {
                     let entry = this.queue.shift()
-                    this.send(entry.message, entry.callback)
+                    this.send(entry.message, (response) => {
+                        let lineNrMatch = entry.message.match(/(N\d+)/i)
+                        if (lineNrMatch != null) {
+                            if (
+                                this.sentCommandsWithLineNr.has(
+                                    parseInt(lineNrMatch[1].slice(1))
+                                )
+                            ) {
+                                this.sentCommandsWithLineNr.delete(
+                                    parseInt(lineNrMatch[1].slice(1))
+                                )
+                            }
+                        }
+
+                        entry.callback(response)
+                    })
                 }
             } else if (data.startsWith("ok")) {
                 let code = "?"
@@ -172,7 +227,22 @@ export default class SerialConnectionManager {
                 }
                 if (this.queue.length > 0) {
                     let entry = this.queue.shift()
-                    this.send(entry.message, entry.callback)
+                    this.send(entry.message, (response) => {
+                        let lineNrMatch = entry.message.match(/(N\d+)/i)
+                        if (lineNrMatch != null) {
+                            if (
+                                this.sentCommandsWithLineNr.has(
+                                    parseInt(lineNrMatch[1].slice(1))
+                                )
+                            ) {
+                                this.sentCommandsWithLineNr.delete(
+                                    parseInt(lineNrMatch[1].slice(1))
+                                )
+                            }
+                        }
+
+                        entry.callback(response)
+                    })
                 }
                 return this.stateManager.webserver.sendMessageToClients(
                     data,
@@ -226,6 +296,10 @@ export default class SerialConnectionManager {
             })
         } catch (e) {
             console.error(e)
+            this.connection.close()
+            this.stateManager.updateState(globals.CONNECTIONSTATE.ERRORED, {
+                errorDescription: e,
+            })
             return
         }
     }
@@ -310,6 +384,9 @@ export default class SerialConnectionManager {
             })
             connection.on("error", function (error) {
                 console.error(error)
+                try {
+                    connection.close()
+                } catch (e) {}
                 reject(error)
             })
             connection.open()

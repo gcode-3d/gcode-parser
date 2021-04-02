@@ -24,6 +24,9 @@ export default class Printer {
         }
     }
     async manageCapabilityValues() {
+        if (!this.capabilities) {
+            return Promise.reject("Cannot parse capabilities from this device")
+        }
         let capabilities = Array.from(this.capabilities)
         return new Promise<void>(async (resolve, reject) => {
             try {

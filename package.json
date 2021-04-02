@@ -13,7 +13,7 @@
     "url": "git+https://github.com/gcode-3d/gcode-parser.git"
   },
   "author": "Tobias Feld (tobias.feld@hotmail.com)",
-  "license": " Apache-2.0",
+  "license": "Apache-2.0",
   "bugs": {
     "url": "https://github.com/gcode-3d/gcode-parser/issues"
   },
@@ -26,6 +26,7 @@
     "bcrypt": "^5.0.1",
     "express": "^4.17.1",
     "express-fileupload": "^1.2.1",
+    "gcode_print_time_analyzer": "^0.0.1",
     "joi": "^17.3.0",
     "node-fetch": "^2.6.1",
     "node-stream-zip": "^1.13.2",

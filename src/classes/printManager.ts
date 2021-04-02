@@ -3,12 +3,18 @@ import StateManager from "../stateManager"
 import CommandInfo from "./CommandInfo"
 import File from "./file"
 import PrintInfo from "./printInfo"
+import { printDescription } from "../interfaces/stateInfo"
+import gcodeAnalyzer from "gcode_print_time_analyzer"
+import AnalyzeResult from "gcode_print_time_analyzer/out/AnalyzeResult"
+import LogPriority from "../enums/logPriority"
 
 export default class PrintManager {
     stateManager: StateManager
     currentPrint: PrintInfo
     currentPrintFile: string[]
     sentCommands: Map<number, CommandInfo> = new Map()
+    analyzedResult?: AnalyzeResult
+    correctionFactor: number = 0
     constructor(stateManager: StateManager) {
         this.stateManager = stateManager
     }
@@ -16,6 +22,10 @@ export default class PrintManager {
     startPrint(fileName: string): Promise<void> {
         return new Promise(async (resolve, reject) => {
             try {
+                this.stateManager.updateState(
+                    globals.CONNECTIONSTATE.PREPARING,
+                    null
+                )
                 let file = await this.stateManager.storage.getFileByName(
                     fileName
                 )
@@ -26,11 +36,32 @@ export default class PrintManager {
                         " does not exist."
                     )
                 }
+                this.stateManager.storage
+                    .log(LogPriority.Debug, "PRINT_START", file.name)
+                    .catch((e) => {
+                        return this.stateManager.updateState(
+                            globals.CONNECTIONSTATE.ERRORED,
+                            { errorDescription: e }
+                        )
+                    })
+
                 this.currentPrint = new PrintInfo(file)
+                let analyzer = new gcodeAnalyzer(file.data.toString("utf8"))
+                this.analyzedResult = analyzer.analyze()
+                if (this.analyzedResult.layerBeginEndMap.size > 0) {
+                    this.currentPrint.setPredictedFirstPrintLayer(
+                        Array.from(
+                            this.analyzedResult.layerBeginEndMap.values()
+                        )
+                            .map((i) => i.beginLineNr)
+                            .sort((a, b) => (a > b ? 1 : -1))[0]
+                    )
+                }
             } catch (e) {
                 this.stateManager.throwError(e)
                 return reject(e)
             }
+
             this.currentPrintFile = this.parseFile(this.currentPrint.file)
 
             this.stateManager.updateState(globals.CONNECTIONSTATE.PRINTING, {
@@ -42,20 +73,18 @@ export default class PrintManager {
                     ),
                     progress: (
                         (this.currentPrint.getCurrentRow() /
-                            this.currentPrintFile.length) *
+                            (this.currentPrintFile.length + 1)) *
                         100
-                    ).toString(),
+                    ).toFixed(2),
                     startTime: this.currentPrint.startTime,
+                    estEndTime: this.currentPrint.getPredictedEndTime(),
                 },
                 tempData:
                     this.stateManager.printer != null
                         ? this.stateManager.printer.temperatureInfo
                         : [],
             })
-            console.log(
-                `${this.currentPrintFile.length} lines loaded, starting print ` +
-                    this.currentPrint.file.name
-            )
+            this.currentPrint.setProgress(0)
             this.sendPrintRow()
             resolve()
         })
@@ -69,20 +98,29 @@ export default class PrintManager {
         }
 
         if (this.currentPrint.getCurrentRow() > this.currentPrintFile.length) {
-            this.clearLastPrint()
-            return this.stateManager.updateState(
-                globals.CONNECTIONSTATE.CONNECTED,
-                null
-            )
-        }
-
-        if (this.currentPrint.getCurrentRow() == 0) {
+            this.finishPrintActions()
+                .then(() => {
+                    this.clearLastPrint()
+                    return this.stateManager.updateState(
+                        globals.CONNECTIONSTATE.CONNECTED,
+                        null
+                    )
+                })
+                .catch((e) => {
+                    console.error(e)
+                    return this.stateManager.updateState(
+                        globals.CONNECTIONSTATE.ERRORED,
+                        { errorDescription: e.message }
+                    )
+                })
+        } else if (this.currentPrint.getCurrentRow() == 0) {
             let line = "M110 N0"
             this.stateManager.connectionManager.send(line, () => {
                 if (!this.currentPrint) {
                     return
                 }
                 this.currentPrint.nextRow()
+                this.updateProgress()
                 this.sendPrintRow()
             })
         } else {
@@ -93,11 +131,87 @@ export default class PrintManager {
                     if (!this.currentPrint) {
                         return
                     }
+                    if (
+                        this.currentPrint.getPredictedEndTime() == null &&
+                        this.currentPrint.getPredictedFirstPrintLayer() ==
+                            this.currentPrint.getCurrentRow() - 1
+                    ) {
+                        if (
+                            this.analyzedResult.totalTimeTaken &&
+                            !isNaN(this.analyzedResult.totalTimeTaken)
+                        ) {
+                            this.currentPrint.setPredictedEndTime(
+                                new Date(
+                                    new Date().getTime() +
+                                        (this.analyzedResult.totalTimeTaken *
+                                            this.correctionFactor +
+                                            this.analyzedResult
+                                                .totalTimeTaken) *
+                                            1000
+                                )
+                            )
+                            this.notifyNewPredictedEndTime()
+                        }
+                    }
+
                     this.currentPrint.nextRow()
+                    this.updateProgress()
                     this.sendPrintRow()
                 }
             )
         }
+    }
+    private finishPrintActions(): Promise<void> {
+        // todo: add notification thing
+        return new Promise(async (resolve, reject) => {
+            await this.stateManager.storage.log(
+                LogPriority.Debug,
+                "PRINT_FINISH",
+                `FILE: ${this.currentPrint.file.name} | CorrectionFactorUsed: ${
+                    this.correctionFactor
+                } | CorrectionFactorNeeded: ${(
+                    1 -
+                    this.currentPrint.getPredictedEndTime().getTime() /
+                        new Date().getTime()
+                ).toFixed(2)} `
+            )
+            return resolve()
+        })
+    }
+    private updateProgress() {
+        if (this.stateManager.state !== globals.CONNECTIONSTATE.PRINTING) {
+            return
+        }
+        let currentProgress =
+            (this.currentPrint.getCurrentRow() /
+                (this.currentPrintFile.length + 1)) *
+            100
+        if (
+            this.currentPrint.getProgress().toFixed(2) !==
+            currentProgress.toFixed(2)
+        ) {
+            this.currentPrint.setProgress(currentProgress)
+            let currentDescription = this.stateManager.getCurrentStateInfo()
+                .description as printDescription
+            currentDescription.printInfo.progress = currentProgress.toFixed(2)
+            this.stateManager.updateState(
+                globals.CONNECTIONSTATE.PRINTING,
+                currentDescription
+            )
+        }
+    }
+
+    private notifyNewPredictedEndTime() {
+        if (this.stateManager.state !== globals.CONNECTIONSTATE.PRINTING) {
+            return
+        }
+        let currentDescription = this.stateManager.getCurrentStateInfo()
+            .description as printDescription
+        currentDescription.printInfo.estEndTime = this.currentPrint.getPredictedEndTime()
+        this.stateManager.updateState(
+            globals.CONNECTIONSTATE.PRINTING,
+            currentDescription
+        )
     }
 
     private clearLastPrint() {
@@ -107,12 +221,24 @@ export default class PrintManager {
     }
 
     cancel() {
-        if (this.stateManager.state === globals.CONNECTIONSTATE.PRINTING) {
-            return this.stateManager.updateState(
-                globals.CONNECTIONSTATE.CONNECTED,
-                null
-            )
-        }
+        this.stateManager.storage
+            .log(LogPriority.Debug, "PRINT_CANCEL", this.currentPrint.file.name)
+            .then(() => {
+                if (
+                    this.stateManager.state === globals.CONNECTIONSTATE.PRINTING
+                ) {
+                    return this.stateManager.updateState(
+                        globals.CONNECTIONSTATE.CONNECTED,
+                        null
+                    )
+                }
+            })
+            .catch((e) => {
+                return this.stateManager.updateState(
+                    globals.CONNECTIONSTATE.ERRORED,
+                    { errorDescription: e }
+                )
+            })
     }
 
     sendPreparedString(

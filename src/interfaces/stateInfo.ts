@@ -23,6 +23,7 @@ export interface printDescription {
     printInfo: {
         file: File
         progress: string
+        estEndTime: Date
         startTime: Date
     }
 }

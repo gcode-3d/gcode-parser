@@ -7,9 +7,10 @@ import crypto from "crypto"
 import UserTokenResult from "./classes/UserTokenResult.js"
 import Device from "./classes/device.js"
 import File from "./classes/file.js"
+import LogPriority from "./enums/logPriority.js"
 
 export default class Storage {
-    db: Database
+    private db: Database
     constructor() {
         this.db = new sqlite.Database("storage.db", (err) => {
             if (err) {
@@ -28,6 +29,9 @@ export default class Storage {
             )
             this.db.run(
                 "CREATE TABLE IF NOT EXISTS files (name varchar(255) PRIMARY KEY, data BLOB not null, uploaded datetime )"
+            )
+            this.db.run(
+                "CREATE TABLE IF NOT EXISTS logs (date datetime not null, shortDescription varchar(255) not null, priority integer(3) not null, details TEXT not null )"
             )
         })
     }
@@ -300,6 +304,7 @@ export default class Storage {
             )
         })
     }
+
     removeFileByName(name: string): Promise<null> {
         return new Promise((resolve, reject) => {
             if (!name || name.length == 0) {
@@ -313,6 +318,34 @@ export default class Storage {
                         return reject(err)
                     }
                     return resolve(null)
+                }
+            )
+        })
+    }
+
+    log(
+        priority: LogPriority,
+        shortDescription: String,
+        details: string
+    ): Promise<void> {
+        return new Promise((resolve, reject) => {
+            if (
+                shortDescription.length <= 0 ||
+                shortDescription.length >= 255
+            ) {
+                return reject(
+                    "Short description is too " +
+                        (shortDescription.length <= 0 ? "short" : "long")
+                )
+            }
+            this.db.run(
+                "insert into logs (date,priority, shortDescription, details) values (datetime('now'), ?, ?, ?)",
+                [priority, shortDescription, details],
+                (err: Error, result: any) => {
+                    if (err) {
+                        return reject(err)
+                    }
+                    return resolve()
                 }
             )
         })
