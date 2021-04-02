@@ -26,7 +26,7 @@
     "bcrypt": "^5.0.1",
     "express": "^4.17.1",
     "express-fileupload": "^1.2.1",
-    "gcode_print_time_analyzer": "^0.0.1",
+    "gcode_print_time_analyzer": "github:gcode-3d/analyzer",
     "joi": "^17.3.0",
     "node-fetch": "^2.6.1",
     "node-stream-zip": "^1.13.2",
