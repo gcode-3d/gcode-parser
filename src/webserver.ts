@@ -43,18 +43,14 @@ export default class Webserver {
             .catch(console.error)
     }
 
-    createRoutes() {
+    async createRoutes() {
+        console.log("Creating routes")
         if (process.env.NODE_ENV === "production") {
             if (this.isInSetupMode) {
-                setupWizard()
-                    .then((location: string) => {
-                        this.app.use(
-                            express.static(location, { fallthrough: true })
-                        )
-                    })
-                    .catch((e: Error) => {
-                        throw e
-                    })
+                console.log("Creating routes - setup")
+                let location = await setupWizard()
+                console.log(location)
+                this.app.use(express.static(location, { fallthrough: true }))
             } else {
                 this.app.use(
                     express.static("build/client", { fallthrough: true })

@@ -2,7 +2,7 @@ import fetch from "node-fetch"
 import fs from "fs"
 import path from "path"
 import StreamZip from "node-stream-zip"
-export default () => {
+export default (): Promise<string> => {
     return new Promise((resolve, reject) => {
         fetch(
             "https://github.com/gcode-3d/setup_wizard/releases/latest/download/dist.zip"
@@ -16,7 +16,7 @@ export default () => {
                         file: "./setup_wizard.zip",
                     })
                     await zip.extract("dist", "./build/setup_wizard")
-                    resolve("./build/setup_wizard")
+                    resolve("build/setup_wizard")
                 })
             })
             .catch(reject)
