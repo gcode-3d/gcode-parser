@@ -7,7 +7,14 @@ export default new Route("-1", "MIDDLEWARE", 2, (_, res, server) => {
         if (server.isInSetupMode) {
             setupWizard()
                 .then((location: string) => {
-                    res.sendFile(path.join(location, "index.html"))
+                    res.sendFile(
+                        path.join(
+                            __dirname,
+                            "../../../",
+                            location,
+                            "index.html"
+                        )
+                    )
                 })
                 .catch((e: Error) => {
                     throw e
