@@ -477,7 +477,7 @@ export default class SerialConnectionManager {
 
     create(path: string, baudrate: number) {
         if (this.isCreating) {
-            return
+            return Promise.reject("Already creating an instance")
         }
         this.isCreating = true
         return new Promise<void>((resolve, reject) => {
