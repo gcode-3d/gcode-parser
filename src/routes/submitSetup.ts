@@ -21,7 +21,6 @@ export default new Route("/api/submitSetup", "POST", 1, (req, res, server) => {
             let devicePath = data.device.path.startsWith("COM")
                 ? "\\\\.\\" + data.device.path
                 : data.device.path
-
             server.stateManager.connectionManager
                 .getBaudrate(devicePath)
                 .then(async (result: connectionInfo | boolean) => {
@@ -41,7 +40,7 @@ export default new Route("/api/submitSetup", "POST", 1, (req, res, server) => {
                         data.printInfo.zValue,
                         data.printInfo.heatedBed,
                         data.printInfo.heatedChamber,
-                        result.toString()
+                        (result as connectionInfo).baudRate.toString()
                     )
                     try {
                         await server.stateManager.storage.saveUser(

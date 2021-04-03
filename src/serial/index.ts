@@ -339,7 +339,6 @@ export default class SerialConnectionManager {
                 if (resultBaudrate != 0) {
                     break
                 }
-
                 const result = await this.getCapabilities(path, baudrate)
                 if (result.isWorking == true) {
                     resultBaudrate = baudrate
@@ -416,19 +415,17 @@ export default class SerialConnectionManager {
                         })
                     })
                 }, 2000)
-
                 const parser = connection.pipe(new Readline())
                 connection.on("open", () => {
                     connection.flush()
+                    console.log("Open " + baudRate)
 
-                    connection.on("data", function (data) {
+                    parser.on("data", function (data: string) {
                         if (
                             data.toString().trim().startsWith("FIRMWARE_NAME:")
                         ) {
                             isWorking = true
                         }
-                    })
-                    parser.on("data", function (data: string) {
                         // Remove lines that are auto-reported temperatures.
                         if (data.trim().match(/^T\d?:\d+\.\d+/i) == null) {
                             responses.push(data)

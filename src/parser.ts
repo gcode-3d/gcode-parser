@@ -26,6 +26,12 @@ class Parser {
         switch (code) {
             case "M115":
                 const firmwareKeys = responses[0].match(/([A-Z_]+:)/g)
+                if (!firmwareKeys) {
+                    if (returnValues) {
+                        return false
+                    }
+                    return
+                }
                 const values = new Map()
                 let tempCopy = responses[0].slice(0)
                 firmwareKeys.forEach((i) => {
