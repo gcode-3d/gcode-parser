@@ -4,16 +4,17 @@ import CommandInfo from "./CommandInfo"
 import File from "./file"
 import PrintInfo from "./printInfo"
 import { printDescription } from "../interfaces/stateInfo"
-import gcodeAnalyzer from "gcode_print_time_analyzer"
-import AnalyzeResult from "gcode_print_time_analyzer/out/AnalyzeResult"
+import { AnalysisResult } from "gcode_print_time_analyzer"
 import LogPriority from "../enums/logPriority"
-
+import path from "path"
+import { Worker } from "worker_threads"
+import crypto from "crypto"
 export default class PrintManager {
     stateManager: StateManager
     currentPrint: PrintInfo
     currentPrintFile: string[]
     sentCommands: Map<number, CommandInfo> = new Map()
-    analyzedResult?: AnalyzeResult
+    analyzedResult?: AnalysisResult
     correctionFactor: number = 0
     constructor(stateManager: StateManager) {
         this.stateManager = stateManager
@@ -46,17 +47,35 @@ export default class PrintManager {
                     })
 
                 this.currentPrint = new PrintInfo(file)
-                let analyzer = new gcodeAnalyzer(file.data.toString("utf8"))
-                this.analyzedResult = analyzer.analyze()
-                if (this.analyzedResult.layerBeginEndMap.size > 0) {
-                    this.currentPrint.setPredictedFirstPrintLayer(
-                        Array.from(
-                            this.analyzedResult.layerBeginEndMap.values()
-                        )
-                            .map((i) => i.beginLineNr)
-                            .sort((a, b) => (a > b ? 1 : -1))[0]
+                let printId = crypto.randomBytes(20).toString("hex")
+                let worker = new Worker(
+                    path.join(__dirname, "../analyzer_worker.js"),
+                    {
+                        workerData: {
+                            file: file.data.toString("utf8"),
+                            printId,
+                        },
+                    }
+                )
+                worker.on("message", (result) => {
+                    if (printId !== result.printId) {
+                        return
+                    }
+                    this.analyzedResult = new AnalysisResult(
+                        result.layerBeginEndMap,
+                        result.totalTimeTaken,
+                        new Map()
                     )
-                }
+                    if (this.analyzedResult.layerBeginEndMap.size > 0) {
+                        this.currentPrint.setPredictedFirstPrintLayer(
+                            Array.from(
+                                this.analyzedResult.layerBeginEndMap.values()
+                            )
+                                .map((i) => i.beginLineNr)
+                                .sort((a, b) => (a > b ? 1 : -1))[0]
+                        )
+                    }
+                })
             } catch (e) {
                 this.stateManager.throwError(e)
                 return reject(e)
@@ -132,8 +151,9 @@ export default class PrintManager {
                         return
                     }
                     if (
+                        this.analyzedResult &&
                         this.currentPrint.getPredictedEndTime() == null &&
-                        this.currentPrint.getPredictedFirstPrintLayer() ==
+                        this.currentPrint.getPredictedFirstPrintLayer() <
                             this.currentPrint.getCurrentRow() - 1
                     ) {
                         if (
