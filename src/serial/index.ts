@@ -477,14 +477,17 @@ export default class SerialConnectionManager {
 
     create(path: string, baudrate: number) {
         if (this.isCreating) {
-            return Promise.reject("Already creating an instance")
+            return Promise.reject(new Error("Already creating an instance"))
         }
         this.isCreating = true
         return new Promise<void>((resolve, reject) => {
             if (!baudrate) {
                 this.getBaudrate(path).then((connectionInfo) => {
                     if (connectionInfo === false) {
-                        return reject("No baudrate combination worked.")
+                        this.isCreating = false
+                        return reject(
+                            new Error("No baudrate combination worked.")
+                        )
                     }
                     connectionInfo = connectionInfo as connectionInfo
                     this.isCreating = false
