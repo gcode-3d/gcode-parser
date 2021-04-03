@@ -1,6 +1,7 @@
 import Route from "../classes/route"
 import setupScheme from "../schemes/setupNew"
 import Device from "../classes/device"
+import Setting from "../enums/setting"
 
 export default new Route("/api/submitSetup", "POST", 1, (req, res, server) => {
     setupScheme
@@ -48,10 +49,15 @@ export default new Route("/api/submitSetup", "POST", 1, (req, res, server) => {
                             data.account.password
                         )
                         await server.stateManager.storage.saveDevice(device)
+                        server.stateManager.storage.setSetting(
+                            Setting.SelectedDevice,
+                            device.name
+                        )
                         res.sendStatus(200)
                         // exit program to restart
                         console.log("[Setup] Setup completed, restarting..")
-                        process.exit()
+                        // mark it as an error to make sure failure-only restarts also pick it up.
+                        process.exit(1)
                     } catch (e) {
                         console.error(e)
                         return res.sendStatus(500)

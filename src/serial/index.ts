@@ -8,6 +8,7 @@ import PrintInfo from "../classes/printInfo"
 import { printDescription } from "../interfaces/stateInfo"
 import CommandInfo from "../classes/CommandInfo"
 import LogPriority from "../enums/logPriority"
+import Device from "../classes/device"
 
 export default class SerialConnectionManager {
     stateManager: StateManager

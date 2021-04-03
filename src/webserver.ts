@@ -10,6 +10,8 @@ import path from "path"
 import { readdir } from "fs"
 import Route from "./classes/route.js"
 import setupWizard from "./tools/setupWizard.js"
+import Device from "./classes/device.js"
+import Setting from "./enums/setting.js"
 
 export default class Webserver {
     app: express.Application
@@ -205,6 +207,14 @@ export default class Webserver {
             console.log("[WS][Event] Connection opened with " + socket.id)
 
             const currentState = this.stateManager.getCurrentStateInfo()
+            let settings = await this.stateManager.storage.getSettings()
+            let device: Device = null
+
+            if (settings.get(Setting.SelectedDevice)) {
+                device = await this.stateManager.storage.getDeviceByName(
+                    settings.get(Setting.SelectedDevice) as string
+                )
+            }
             socket.sendJSON({
                 type: "ready",
                 content: {
@@ -212,6 +222,7 @@ export default class Webserver {
                         username: socket.userInfo.username,
                         permissions: socket.userInfo.permissions.serialize(),
                     },
+                    currentPrinter: device ? device : undefined,
                     ...currentState,
                 },
             })

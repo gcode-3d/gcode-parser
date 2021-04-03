@@ -8,16 +8,18 @@ import UserTokenResult from "./classes/UserTokenResult.js"
 import Device from "./classes/device.js"
 import File from "./classes/file.js"
 import LogPriority from "./enums/logPriority.js"
+import Setting from "./enums/setting.js"
 
 export default class Storage {
     private db: Database
+    private settings: Map<Setting, boolean | number | string>
     constructor() {
         this.db = new sqlite.Database("storage.db", (err) => {
             if (err) {
                 throw err
             }
         })
-        this.db.serialize(() => {
+        this.db.serialize(async () => {
             this.db.run(
                 "CREATE TABLE IF NOT EXISTS users (username varchar(30) primary key,password char(40) not null, permissions integer(8) not null default '0')"
             )
@@ -33,6 +35,74 @@ export default class Storage {
             this.db.run(
                 "CREATE TABLE IF NOT EXISTS logs (date datetime not null, shortDescription varchar(255) not null, priority integer(3) not null, details TEXT not null )"
             )
+
+            this.db.run(
+                "CREATE TABLE IF NOT EXISTS settings (selectedDevice varchar(255), BstartOnBoot boolean default 0 not null)"
+            )
+
+            await this.fetchSettings()
+            return
+        })
+    }
+
+    private fetchSettings(): Promise<Map<Setting, boolean | number | string>> {
+        return new Promise((resolve, reject) => {
+            this.db.get("select * from settings", (error: Error, row: any) => {
+                if (error) {
+                    return this.log(
+                        LogPriority.Error,
+                        "SETTINGS_FETCH",
+                        error.message
+                    )
+                        .then(() => {
+                            return reject(error)
+                        })
+                        .catch(reject)
+                }
+                if (!row) {
+                    this.db.run(
+                        "insert into settings (selectedDevice, BstartOnBoot) values (null, false)"
+                    )
+                    return this.fetchSettings().then(resolve).catch(reject)
+                } else {
+                    this.settings = new Map()
+                    Object.entries(row).forEach((entry: any) => {
+                        if (entry[0].startsWith("B")) {
+                            this.settings.set(entry[0], entry[1] == 1)
+                        } else {
+                            this.settings.set(entry[0], entry[1])
+                        }
+                    })
+                    return resolve(this.settings)
+                }
+            })
+        })
+    }
+
+    async getSettings() {
+        if (!this.settings) {
+            await this.fetchSettings()
+        }
+        return this.settings
+    }
+
+    setSetting(key: Setting, value: string | number | boolean): Promise<void> {
+        return new Promise(async (resolve, reject) => {
+            if (!this.settings) {
+                await this.fetchSettings()
+            }
+            let statement = this.db.prepare(
+                "update settings set " + key + " = ?"
+            )
+            statement.run([value], async (result: any, error: Error) => {
+                if (error) {
+                    this.log(LogPriority.Error, "SETTINGS_FETCH", error.message)
+                        .then(() => reject(error))
+                        .catch(reject)
+                }
+                this.settings.set(key, value)
+                resolve()
+            })
         })
     }
 
@@ -205,6 +275,37 @@ export default class Storage {
             })
         })
     }
+
+    getDeviceByName(name: string): Promise<Device> {
+        return new Promise((resolve, reject) => {
+            this.db.get(
+                "select * from devices where name = ?",
+                [name],
+                (error: Error, row: any) => {
+                    if (error) {
+                        return reject(error)
+                    }
+                    if (!row) {
+                        return resolve(null)
+                    } else {
+                        return resolve(
+                            new Device(
+                                row.name,
+                                row.path,
+                                row.width,
+                                row.depth,
+                                row.height,
+                                row.heatedBed,
+                                row.heatedChamber,
+                                row.baud
+                            )
+                        )
+                    }
+                }
+            )
+        })
+    }
+
     insertFile(name: string, data: Buffer): Promise<void> {
         return new Promise((resolve, reject) => {
             if (!name || name.length == 0) {

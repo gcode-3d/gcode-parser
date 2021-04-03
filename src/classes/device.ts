@@ -1,4 +1,4 @@
-export default class device {
+export default class Device {
     name: string
     path: string
     width: number
