@@ -418,7 +418,6 @@ export default class SerialConnectionManager {
                 const parser = connection.pipe(new Readline())
                 connection.on("open", () => {
                     connection.flush()
-                    console.log("Open " + baudRate)
 
                     parser.on("data", function (data: string) {
                         if (
