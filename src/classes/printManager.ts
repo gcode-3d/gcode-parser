@@ -16,6 +16,9 @@ export default class PrintManager {
     sentCommands: Map<number, CommandInfo> = new Map()
     analyzedResult?: AnalysisResult
     correctionFactor: number = 0
+    printId = crypto.randomBytes(20).toString("hex")
+    private worker: Worker
+
     constructor(stateManager: StateManager) {
         this.stateManager = stateManager
     }
@@ -27,6 +30,7 @@ export default class PrintManager {
                     globals.CONNECTIONSTATE.PREPARING,
                     null
                 )
+                this.printId = crypto.randomBytes(20).toString("hex")
                 let file = await this.stateManager.storage.getFileByName(
                     fileName
                 )
@@ -47,24 +51,51 @@ export default class PrintManager {
                     })
 
                 this.currentPrint = new PrintInfo(file)
-                let printId = crypto.randomBytes(20).toString("hex")
-                let worker = new Worker(
+                if (this.worker != null) {
+                    await new Promise<void>((resolve, reject) => {
+                        this.worker
+                            .terminate()
+                            .then(() => {
+                                this.worker.removeAllListeners()
+                                this.worker = null
+                                return resolve()
+                            })
+                            .catch((e) => {
+                                console.error(e)
+                                return reject(e)
+                            })
+                    })
+                }
+                this.worker = new Worker(
                     path.join(__dirname, "../analyzer_worker.js"),
                     {
                         workerData: {
                             file: file.data.toString("utf8"),
-                            printId,
+                            printId: this.printId,
                         },
                     }
                 )
-                worker.on("message", (result) => {
-                    if (printId !== result.printId) {
+                this.worker.on("message", (result) => {
+                    if (this.printId !== result.printId) {
                         return
                     }
+                    if (!this.currentPrint) {
+                        return
+                    }
+                    console.log("WORKER" + result.totalTimeTaken)
                     this.analyzedResult = new AnalysisResult(
                         result.layerBeginEndMap,
                         result.totalTimeTaken,
                         new Map()
+                    )
+
+                    this.stateManager.storage.log(
+                        LogPriority.Debug,
+                        "PRINT_ANALYZED",
+                        "Estimated " +
+                            result.totalTimeTaken +
+                            " seconds for print " +
+                            file.name
                     )
                     if (this.analyzedResult.layerBeginEndMap.size > 0) {
                         this.currentPrint.setPredictedFirstPrintLayer(
@@ -143,35 +174,31 @@ export default class PrintManager {
                 this.sendPrintRow()
             })
         } else {
+            if (
+                this.analyzedResult &&
+                this.currentPrint.getPredictedEndTime() == null &&
+                this.currentPrint.getPredictedFirstPrintLayer() <
+                    this.currentPrint.getCurrentRow() - 1
+            ) {
+                if (
+                    this.analyzedResult.totalTimeTaken &&
+                    !isNaN(this.analyzedResult.totalTimeTaken)
+                ) {
+                    this.currentPrint.startTime = new Date()
+                    this.currentPrint.setPredictedEndTime(
+                        this.analyzedResult.totalTimeTaken *
+                            this.correctionFactor +
+                            this.analyzedResult.totalTimeTaken
+                    )
+                    this.notifyNewPredictedEndTime()
+                }
+            }
             this.sendPreparedString(
                 this.currentPrint.getCurrentRow(),
                 this.currentPrintFile[this.currentPrint.getCurrentRow() - 1],
                 (result: parsedResponse) => {
                     if (!this.currentPrint) {
                         return
-                    }
-                    if (
-                        this.analyzedResult &&
-                        this.currentPrint.getPredictedEndTime() == null &&
-                        this.currentPrint.getPredictedFirstPrintLayer() <
-                            this.currentPrint.getCurrentRow() - 1
-                    ) {
-                        if (
-                            this.analyzedResult.totalTimeTaken &&
-                            !isNaN(this.analyzedResult.totalTimeTaken)
-                        ) {
-                            this.currentPrint.setPredictedEndTime(
-                                new Date(
-                                    new Date().getTime() +
-                                        (this.analyzedResult.totalTimeTaken *
-                                            this.correctionFactor +
-                                            this.analyzedResult
-                                                .totalTimeTaken) *
-                                            1000
-                                )
-                            )
-                            this.notifyNewPredictedEndTime()
-                        }
                     }
 
                     this.currentPrint.nextRow()
@@ -183,6 +210,8 @@ export default class PrintManager {
     }
     private finishPrintActions(): Promise<void> {
         // todo: add notification thing
+        console.log(this.analyzedResult.totalTimeTaken)
+        console.log(this.currentPrint.getPredictedEndTime())
         return new Promise(async (resolve, reject) => {
             await this.stateManager.storage.log(
                 LogPriority.Debug,
@@ -191,8 +220,19 @@ export default class PrintManager {
                     this.correctionFactor
                 } | CorrectionFactorNeeded: ${(
                     1 -
-                    this.currentPrint.getPredictedEndTime().getTime() /
-                        new Date().getTime()
+                    (this.analyzedResult.totalTimeTaken * 1000) /
+                        (new Date().getTime() -
+                            this.currentPrint.startTime.getTime())
+                ).toFixed(2)}`
+            )
+            console.log(
+                `FILE: ${this.currentPrint.file.name} | CorrectionFactorUsed: ${
+                    this.correctionFactor
+                } | CorrectionFactorNeeded: ${(
+                    1 -
+                    (this.analyzedResult.totalTimeTaken * 1000) /
+                        (new Date().getTime() -
+                            this.currentPrint.startTime.getTime())
                 ).toFixed(2)} `
             )
             return resolve()
@@ -218,6 +258,20 @@ export default class PrintManager {
                 globals.CONNECTIONSTATE.PRINTING,
                 currentDescription
             )
+            if (this.currentPrint.getPredictedEndTime() != null) {
+                let timeBusy =
+                    new Date().getTime() - this.currentPrint.startTime.getTime()
+                let estimatedBasedOnCurrentProgress =
+                    (timeBusy / parseFloat(currentProgress.toFixed(2))) * 100
+                let timeEstimated =
+                    this.currentPrint.getPredictedEndTime().getTime() -
+                    this.currentPrint.startTime.getTime()
+                this.currentPrint.setPredictedEndTime(
+                    estimatedBasedOnCurrentProgress / 1000,
+                    Math.floor(currentProgress)
+                )
+                this.notifyNewPredictedEndTime()
+            }
         }
     }
 
@@ -234,10 +288,17 @@ export default class PrintManager {
         )
     }
 
-    private clearLastPrint() {
+    private async clearLastPrint() {
+        this.printId = crypto.randomBytes(20).toString("hex")
+        if (this.worker) {
+            await this.worker.terminate()
+            this.worker.removeAllListeners()
+            this.worker = null
+        }
         this.sentCommands = new Map()
         this.currentPrint = null
         this.currentPrintFile = []
+        this.analyzedResult = null
     }
 
     cancel() {
@@ -247,6 +308,14 @@ export default class PrintManager {
                 if (
                     this.stateManager.state === globals.CONNECTIONSTATE.PRINTING
                 ) {
+                    this.clearLastPrint()
+                    this.stateManager.connectionManager.send("M104 S0")
+                    if (this.stateManager.printer.temperatureInfo[0]?.bed) {
+                        this.stateManager.connectionManager.send("M140 S0")
+                    }
+                    if (this.stateManager.printer.temperatureInfo[0]?.chamber) {
+                        this.stateManager.connectionManager.send("M141 S0")
+                    }
                     return this.stateManager.updateState(
                         globals.CONNECTIONSTATE.CONNECTED,
                         null
