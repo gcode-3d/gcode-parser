@@ -9,6 +9,8 @@ import Device from "./classes/device.js"
 import File from "./classes/file.js"
 import LogPriority from "./enums/logPriority.js"
 import Setting from "./enums/setting.js"
+import LogEntry from "./classes/LogEntry.js"
+import { date } from "joi"
 
 export default class Storage {
     private db: Database
@@ -447,6 +449,48 @@ export default class Storage {
                         return reject(err)
                     }
                     return resolve()
+                }
+            )
+        })
+    }
+
+    listLogs(priority: LogPriority[], amount: number): Promise<LogEntry[]> {
+        if (!amount) {
+            amount = 50
+        }
+        return new Promise((resolve, reject) => {
+            let priorityWhere =
+                "WHERE " + priority.map((p) => "priority = " + p).join(" OR ")
+            this.db.all(
+                "SELECT * FROM logs " +
+                    priorityWhere +
+                    " order by date desc limit " +
+                    amount,
+                (err, rows) => {
+                    if (err) {
+                        return reject(err)
+                    }
+                    return resolve(
+                        rows.map((row) => {
+                            let priority: LogPriority
+                            switch (row.priority) {
+                                case LogPriority.Debug:
+                                    priority = LogPriority.Debug
+                                    break
+                                case LogPriority.Error:
+                                    priority = LogPriority.Error
+                                    break
+                                case LogPriority.Warning:
+                                    priority = LogPriority.Warning
+                            }
+                            return new LogEntry(
+                                priority,
+                                row.details,
+                                row.shortDescription,
+                                new Date(row.date)
+                            )
+                        })
+                    )
                 }
             )
         })
