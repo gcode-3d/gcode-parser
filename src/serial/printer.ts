@@ -48,23 +48,6 @@ export default class Printer {
                                     )
                                 }
                                 break
-                            case "Cap:EEPROM":
-                                if (value == true) {
-                                    return this.stateManager.connectionManager.send(
-                                        "M501",
-                                        (response) => {
-                                            if (response === true) {
-                                                resolve()
-                                            } else {
-                                                reject(
-                                                    "[ERROR][CAPABILITIES] Setting up EEPROM CAP returned the following unexpected code: " +
-                                                        response
-                                                )
-                                            }
-                                        }
-                                    )
-                                }
-                                break
                             case "Cap:AUTOREPORT_TEMP":
                                 if (value == true) {
                                     return this.stateManager.connectionManager.send(
