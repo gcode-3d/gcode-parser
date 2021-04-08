@@ -20,7 +20,10 @@ export default class SerialConnectionManager {
     connection: ExtSerialPort
     parser: Stream
     queue: { message: string; callback?: (result: parsedResponse) => void }[]
-    private sentCommandsWithLineNr: Map<number, string> = new Map()
+    private sentCommandsWithLineNr: Map<
+        number,
+        { command: string; time: Date }
+    > = new Map()
     private isCreating: boolean = false
     constructor(stateManager: StateManager) {
         this.stateManager = stateManager
@@ -75,24 +78,27 @@ export default class SerialConnectionManager {
     }
     send(message: string, callback?: (response: parsedResponse) => void) {
         if (this.lastCommand.code == null) {
-            const matches = message.match(/\n?(N\d ?)?(G\d+|M\d+)/)
+            const matches = message.match(/\n?(N\d+ ?)?(G\d+|M\d+)/)
             if (matches == null) {
                 console.log("[Invalid gcode] " + message)
             }
             if (matches != null) {
                 this.lastCommand.code = matches[2]
                 this.lastCommand.callback = callback
+                if (matches[1] != null) {
+                    this.sentCommandsWithLineNr.set(
+                        parseInt(matches[1].slice(1)),
+                        {
+                            command: message,
+                            time: new Date(),
+                        }
+                    )
+                }
             }
             this.stateManager.webserver.sendMessageToClients(
                 message,
                 globals.TERMINALLINETYPES.INPUT
             )
-            if (matches[1] != null) {
-                this.sentCommandsWithLineNr.set(
-                    parseInt(matches[1].slice(1)),
-                    message
-                )
-            }
 
             this.connection.writeDrain("\n" + message + "\n")
             this.connection.writeDrain("\n")
@@ -124,7 +130,7 @@ export default class SerialConnectionManager {
             if (data.startsWith("Error")) {
                 return console.error(data)
             }
-            if (data.toLowerCase().startsWith("resend: ")) {
+            if (data.toLowerCase().startsWith("d: ")) {
                 let resendCode = parseInt(data.match(/Resend: (\d+)/i)[1])
                 if (this.sentCommandsWithLineNr.has(resendCode)) {
                     let callback = null
@@ -132,7 +138,7 @@ export default class SerialConnectionManager {
                         callback = this.lastCommand.callback
                     }
                     this.send(
-                        this.sentCommandsWithLineNr.get(resendCode),
+                        this.sentCommandsWithLineNr.get(resendCode).command,
                         this.lastCommand.callback
                     )
                 } else {
@@ -186,7 +192,9 @@ export default class SerialConnectionManager {
                             }
                         }
 
-                        entry.callback(response)
+                        if (entry.callback) {
+                            entry.callback(response)
+                        }
                     })
                 }
             } else if (data.startsWith("ok")) {
@@ -242,7 +250,9 @@ export default class SerialConnectionManager {
                             }
                         }
 
-                        entry.callback(response)
+                        if (entry.callback) {
+                            entry.callback(response)
+                        }
                     })
                 }
                 return this.stateManager.webserver.sendMessageToClients(
