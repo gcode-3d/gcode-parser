@@ -7,6 +7,9 @@ import { printDescription } from "../interfaces/stateInfo"
 import LogPriority from "../enums/logPriority"
 import crypto from "crypto"
 import Analyzer, { AnalysisResult } from "gcode_print_time_analyzer"
+import { Worker } from "worker_threads"
+import path from "path"
+
 export default class PrintManager {
     stateManager: StateManager
     currentPrint: PrintInfo
@@ -17,6 +20,7 @@ export default class PrintManager {
     printId = crypto.randomBytes(20).toString("hex")
     private remainder = ""
     private readFileDone = false
+    private worker: Worker
 
     constructor(stateManager: StateManager) {
         this.stateManager = stateManager
@@ -42,6 +46,21 @@ export default class PrintManager {
                         " does not exist."
                     )
                 }
+
+                this.worker = new Worker(
+                    path.join(__dirname, "./analyzer_worker.js"),
+                    {
+                        workerData: { printId: this.printId },
+                    }
+                )
+                this.stateManager.storage
+                    .getFileByName(fileName)
+                    .then((file) => {
+                        file.data.on("data", (chunk) => {
+                            this.worker.emit("message", chunk)
+                        })
+                    })
+
                 this.stateManager.storage
                     .log(LogPriority.Debug, "PRINT_START", file.name)
                     .catch((e) => {
@@ -56,8 +75,8 @@ export default class PrintManager {
                 this.stateManager.storage
                     .getFileByName(this.currentPrint.file.name)
                     .then((file) => {
-                        let analyzer = new Analyzer()
-                        analyzer.analyze(file.data).then((result) => {
+                        this.worker.on("message", (result: AnalysisResult) => {
+                            console.log("Worker reporting")
                             if (this.printId !== id) {
                                 return
                             }
@@ -337,6 +356,12 @@ export default class PrintManager {
 
     private async clearLastPrint() {
         this.printId = crypto.randomBytes(20).toString("hex")
+        if (this.worker) {
+            this.worker.removeAllListeners()
+            this.worker.terminate().then(() => {
+                this.worker = null
+            })
+        }
         if (this.currentPrint && this.currentPrint.file.data) {
             this.currentPrint.file.data.destroy()
         }
