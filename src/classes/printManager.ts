@@ -118,6 +118,7 @@ export default class PrintManager {
 
             this.currentPrint.file.data!.on("end", () => {
                 this.readFileDone = true
+                this.currentPrint.file.data!.destroy()
             })
             this.currentPrint.file.data!.resume()
 
@@ -336,7 +337,9 @@ export default class PrintManager {
 
     private async clearLastPrint() {
         this.printId = crypto.randomBytes(20).toString("hex")
-
+        if (this.currentPrint && this.currentPrint.file.data) {
+            this.currentPrint.file.data.destroy()
+        }
         this.sentCommands = new Map()
         this.currentPrint = null
         this.currentPrintFile = []
