@@ -47,12 +47,6 @@ export default class PrintManager {
                     )
                 }
 
-                this.worker = new Worker(
-                    path.join(__dirname, "./analyzer_worker.js"),
-                    {
-                        workerData: { printId: this.printId },
-                    }
-                )
                 this.stateManager.storage
                     .getFileByName(fileName)
                     .then((file) => {
@@ -75,8 +69,29 @@ export default class PrintManager {
                 this.stateManager.storage
                     .getFileByName(this.currentPrint.file.name)
                     .then((file) => {
+                        file.data!.resume()
+                        file.data!.on("data", (chunk) => {
+                            this.worker.postMessage({
+                                type: "chunk",
+                                data: chunk,
+                            })
+                        })
+                        file.data!.on("end", () => {
+                            this.worker.postMessage({ type: "end" })
+                            file.data!.destroy()
+                            file.data!.removeAllListeners()
+                        })
+                        this.worker = new Worker(
+                            path.join(__dirname, "./analyzer_worker.js"),
+                            {
+                                workerData: { printId: this.printId },
+                            }
+                        )
+                        this.worker.on("exit", () => {
+                            this.worker.removeAllListeners()
+                            this.worker = null
+                        })
                         this.worker.on("message", (result: AnalysisResult) => {
-                            console.log("Worker reporting")
                             if (this.printId !== id) {
                                 return
                             }
@@ -282,29 +297,37 @@ export default class PrintManager {
     }
     private finishPrintActions(): Promise<void> {
         // todo: add notification thing
-        return new Promise(async (resolve, reject) => {
-            await this.stateManager.storage.log(
-                LogPriority.Debug,
-                "PRINT_FINISH",
-                `FILE: ${this.currentPrint.file.name} | CorrectionFactorUsed: ${
-                    this.correctionFactor
-                } | CorrectionFactorNeeded: ${(
-                    1 -
-                    (this.analyzedResult.totalTimeTaken * 1000) /
-                        (new Date().getTime() -
-                            this.currentPrint.startTime.getTime())
-                ).toFixed(2)}`
-            )
-            console.log(
-                `FILE: ${this.currentPrint.file.name} | CorrectionFactorUsed: ${
-                    this.correctionFactor
-                } | CorrectionFactorNeeded: ${(
-                    1 -
-                    (this.analyzedResult.totalTimeTaken * 1000) /
-                        (new Date().getTime() -
-                            this.currentPrint.startTime.getTime())
-                ).toFixed(2)} `
-            )
+        return new Promise(async (resolve) => {
+            try {
+                await this.stateManager.storage.log(
+                    LogPriority.Debug,
+                    "PRINT_FINISH",
+                    `FILE: ${
+                        this.currentPrint.file.name
+                    } | CorrectionFactorUsed: ${
+                        this.correctionFactor
+                    } | CorrectionFactorNeeded: ${(
+                        1 -
+                        (this.analyzedResult.totalTimeTaken * 1000) /
+                            (new Date().getTime() -
+                                this.currentPrint.startTime.getTime())
+                    ).toFixed(2)}`
+                )
+                console.log(
+                    `FILE: ${
+                        this.currentPrint.file.name
+                    } | CorrectionFactorUsed: ${
+                        this.correctionFactor
+                    } | CorrectionFactorNeeded: ${(
+                        1 -
+                        (this.analyzedResult.totalTimeTaken * 1000) /
+                            (new Date().getTime() -
+                                this.currentPrint.startTime.getTime())
+                    ).toFixed(2)} `
+                )
+            } catch (e) {
+                console.error
+            }
             return resolve()
         })
     }

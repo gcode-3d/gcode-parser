@@ -8,9 +8,13 @@ if (!isMainThread) {
             return true
         },
     })
-    parentPort.on("message", (data: any) => {
-        console.log(data)
-        stream.push(data)
+    parentPort.on("message", (data: { type: string; data?: any }) => {
+        if (data.type === "chunk") {
+            stream.push(data.data)
+        }
+        if (data.type == "end") {
+            stream.emit("end")
+        }
     })
     let printId = workerData.printId as string
     let analyzer = new Analyer()
