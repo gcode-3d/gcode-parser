@@ -12,7 +12,7 @@ import Setting from "./enums/setting.js"
 import LogEntry from "./classes/LogEntry.js"
 import fs from "fs"
 import path from "path"
-import { Readable } from "node:stream"
+import { Readable } from "stream"
 
 export default class Storage {
     private db: Database
