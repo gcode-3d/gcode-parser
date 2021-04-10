@@ -350,17 +350,6 @@ export default class PrintManager {
                 globals.CONNECTIONSTATE.PRINTING,
                 currentDescription
             )
-            if (this.currentPrint.getPredictedEndTime() != null) {
-                let timeBusy =
-                    new Date().getTime() - this.currentPrint.startTime.getTime()
-                let estimatedBasedOnCurrentProgress =
-                    (timeBusy / parseFloat(currentProgress.toFixed(2))) * 100
-                this.currentPrint.setPredictedEndTime(
-                    estimatedBasedOnCurrentProgress / 1000,
-                    Math.floor(currentProgress)
-                )
-                this.notifyNewPredictedEndTime()
-            }
         }
     }
 
