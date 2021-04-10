@@ -10,17 +10,37 @@ import File from "./classes/file.js"
 import LogPriority from "./enums/logPriority.js"
 import Setting from "./enums/setting.js"
 import LogEntry from "./classes/LogEntry.js"
-import { date } from "joi"
+import fs from "fs"
+import path from "path"
+import { Readable } from "node:stream"
 
 export default class Storage {
     private db: Database
     private settings: Map<Setting, boolean | number | string>
+    private readonly storageLocation = path.join(process.cwd(), "files")
     constructor() {
         this.db = new sqlite.Database("storage.db", (err) => {
             if (err) {
                 throw err
             }
         })
+
+        fs.access(
+            this.storageLocation,
+            fs.constants.W_OK | fs.constants.R_OK,
+            (err) => {
+                if (err) {
+                    if (err.code == "ENOENT") {
+                        return fs.mkdir(this.storageLocation, (err) => {
+                            if (err) {
+                                throw err
+                            }
+                        })
+                    }
+                    throw err
+                }
+            }
+        )
         this.db.serialize(async () => {
             this.db.run(
                 "CREATE TABLE IF NOT EXISTS users (username varchar(30) primary key,password char(40) not null, permissions integer(8) not null default '0')"
@@ -30,9 +50,6 @@ export default class Storage {
             )
             this.db.run(
                 "CREATE TABLE IF NOT EXISTS devices (name varchar(255) PRIMARY KEY, path varchar(255) not null, width integer(4) not null, depth integer(4) not null, height integer(4) not null, baud varchar(10) not null default 'Auto', heatedBed boolean not null, heatedChamber boolean not null)"
-            )
-            this.db.run(
-                "CREATE TABLE IF NOT EXISTS files (name varchar(255) PRIMARY KEY, data BLOB not null, uploaded datetime )"
             )
             this.db.run(
                 "CREATE TABLE IF NOT EXISTS logs (date datetime not null, shortDescription varchar(255) not null, priority integer(3) not null, details TEXT not null )"
@@ -308,24 +325,55 @@ export default class Storage {
         })
     }
 
-    insertFile(name: string, data: Buffer): Promise<void> {
+    insertFileWithStream(
+        stream: Readable,
+        fileBoundary: string
+    ): Promise<void> {
         return new Promise((resolve, reject) => {
-            if (!name || name.length == 0) {
-                return reject("No name specified")
-            }
-            if (!data) {
-                return reject("No data given")
-            }
-            this.db.run(
-                "insert into files (name, data, uploaded) values (?, ?, datetime('now'))",
-                [name, data],
-                (err: Error, result: any) => {
-                    if (err) {
-                        return reject(err)
+            let fsStream: fs.WriteStream
+            let isCapturing: boolean = false
+            stream.on("data", (data: Buffer) => {
+                let chunk = data.toString("utf8")
+                chunk = chunk.replace(/\r\n?|\n/g, "\n")
+
+                if (chunk.split(/\r\n?|\n/)[0].trim() == "--" + fileBoundary) {
+                    let header = chunk.split("\n\n")[0]
+                    let nameResult = header.match(
+                        /Content-Disposition: form-data; name="file"; filename="([^\\]*\.gcode)"/
+                    )
+                    if (nameResult == null) {
+                        stream.destroy()
+                        return reject("This file has no name specified")
                     }
-                    return resolve()
+                    chunk = chunk.substr(header.length).trimStart()
+                    fsStream = fs.createWriteStream(
+                        path.join(this.storageLocation, nameResult[1]),
+                        "utf8"
+                    )
+                    isCapturing = true
                 }
-            )
+
+                if (
+                    chunk.indexOf("--" + fileBoundary + "--") != -1 &&
+                    isCapturing
+                ) {
+                    chunk = chunk.substr(
+                        0,
+                        chunk.indexOf("--" + fileBoundary + "--")
+                    )
+                    isCapturing = false
+                }
+                if (chunk.length > 0) {
+                    fsStream.write(chunk)
+                }
+            })
+            stream.on("end", () => {
+                if (!fsStream) {
+                    return reject("No files uploaded")
+                }
+                fsStream.emit("end")
+                resolve()
+            })
         })
     }
 
@@ -334,14 +382,22 @@ export default class Storage {
             if (!name || name.length == 0) {
                 return reject("No name specified")
             }
-            this.db.get(
-                "select 1 from files where name = ? limit 1",
-                name,
-                (err: Error, row: any) => {
+            if (!/[^\\]*\.gcode$/i.test(name)) {
+                return reject(
+                    "File name is not correct, it should be in this format: name.gcode . Only allowed characters are [a-zA-Z0-9_]"
+                )
+            }
+            fs.access(
+                path.join(this.storageLocation, name),
+                fs.constants.W_OK | fs.constants.R_OK,
+                (err) => {
                     if (err) {
+                        if (err.code == "ENOENT") {
+                            return resolve(false)
+                        }
                         return reject(err)
                     }
-                    return resolve(row !== undefined)
+                    return resolve(true)
                 }
             )
         })
@@ -349,80 +405,133 @@ export default class Storage {
 
     getFileList(): Promise<File[]> {
         return new Promise((resolve, reject) => {
-            this.db.all(
-                "select name, uploaded from files",
-                (err: Error, rows: any) => {
-                    if (err) {
-                        return reject(err)
-                    }
-                    resolve(
-                        rows.map((row: any) => ({
-                            name: row.name,
-                            uploaded: new Date(row.uploaded),
-                        }))
-                    )
+            fs.readdir(this.storageLocation, (err, files) => {
+                if (err) {
+                    return reject(err)
                 }
-            )
+                files = files.filter((file) => file.endsWith(".gcode"))
+                if (files.length == 0) {
+                    return resolve([])
+                }
+                Promise.all(
+                    files
+                        .map(
+                            (file): Promise<File> => {
+                                return new Promise((resolve, reject) =>
+                                    fs.stat(
+                                        path.join(this.storageLocation, file),
+                                        (err, result) => {
+                                            if (err) {
+                                                if (err.code == "EPERM") {
+                                                    return resolve(null)
+                                                }
+                                                return reject(err)
+                                            }
+
+                                            resolve(
+                                                new File(
+                                                    file,
+                                                    result.birthtime,
+                                                    result.size,
+                                                    null
+                                                )
+                                            )
+                                        }
+                                    )
+                                )
+                            }
+                        )
+                        .filter((file) => file !== null)
+                )
+                    .then(resolve)
+                    .catch(reject)
+            })
         })
     }
 
     getFileByName(name: string): Promise<File> {
-        return new Promise((resolve, reject) => {
+        return new Promise(async (resolve, reject) => {
             if (!name || name.length == 0) {
                 return reject("No name specified")
             }
-            this.db.get(
-                "select name, data, uploaded from files where name = ?",
-                [name],
-                (err: Error, row: any) => {
-                    if (err) {
-                        return reject(err)
-                    } else if (!row) {
-                        return resolve(null)
+            if (!/[^\\]*\.gcode$/i.test(name)) {
+                return reject(
+                    "File name is not correct, it should be in this format: name.gcode . Only allowed characters are [a-zA-Z0-9_]"
+                )
+            }
+            try {
+                var fileStats: fs.Stats = await new Promise(
+                    (resolve, reject) => {
+                        fs.stat(
+                            path.join(this.storageLocation, name),
+                            (err, stats) => {
+                                if (err) {
+                                    return reject(err)
+                                }
+                                resolve(stats)
+                            }
+                        )
                     }
-                    return resolve(
-                        new File(row.name, new Date(row.uploaded), row.data)
-                    )
-                }
+                )
+            } catch (e) {
+                return reject(e)
+            }
+            let stream = fs.createReadStream(
+                path.join(this.storageLocation, name)
+            )
+            stream.setEncoding("utf8")
+            stream.pause()
+            return resolve(
+                new File(name, fileStats.birthtime, fileStats.size, stream)
             )
         })
     }
 
-    updateFileName(old_name: string, new_name: string): Promise<null> {
+    updateFileName(old_name: string, new_name: string): Promise<void> {
         return new Promise((resolve, reject) => {
             if (!old_name || old_name.length == 0) {
                 return reject("No old name specified")
             } else if (!new_name || new_name.length == 0) {
                 return reject("No new name specified")
             }
-            this.db.run(
-                "update files set name = ? where name = ?",
-                [new_name, old_name],
-                (err: Error, result: any) => {
+            if (!/[^\\]*\.gcode$/i.test(old_name)) {
+                return reject(
+                    "Old file name is not correct, it should be in this format: name.gcode . Only allowed characters are [a-zA-Z0-9_]"
+                )
+            } else if (!/[^\\]*\.gcode$/i.test(new_name)) {
+                return reject(
+                    "New file name is not correct, it should be in this format: name.gcode . Only allowed characters are [a-zA-Z0-9_]"
+                )
+            }
+            fs.rename(
+                path.join(this.storageLocation, old_name),
+                path.join(this.storageLocation, new_name),
+                (err) => {
                     if (err) {
                         return reject(err)
                     }
-                    return resolve(null)
+                    resolve()
                 }
             )
         })
     }
 
-    removeFileByName(name: string): Promise<null> {
+    removeFileByName(name: string): Promise<void> {
         return new Promise((resolve, reject) => {
             if (!name || name.length == 0) {
                 return reject("No name specified")
             }
-            this.db.run(
-                "delete from files where name = ?",
-                [name],
-                (err: Error, result: any) => {
-                    if (err) {
-                        return reject(err)
-                    }
-                    return resolve(null)
+            if (!/[^\\]*\.gcode$/i.test(name)) {
+                return reject(
+                    "file name is not correct, it should be in this format: name.gcode . Only allowed characters are [a-zA-Z0-9_]"
+                )
+            }
+            fs.unlink(path.join(this.storageLocation, name), (err) => {
+                if (err) {
+                    return reject(err)
                 }
-            )
+                return resolve()
+            })
         })
     }
 

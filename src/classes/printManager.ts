@@ -4,20 +4,19 @@ import CommandInfo from "./CommandInfo"
 import File from "./file"
 import PrintInfo from "./printInfo"
 import { printDescription } from "../interfaces/stateInfo"
-import { AnalysisResult } from "gcode_print_time_analyzer"
 import LogPriority from "../enums/logPriority"
-import path from "path"
-import { Worker } from "worker_threads"
 import crypto from "crypto"
+import Analyzer, { AnalysisResult } from "gcode_print_time_analyzer"
 export default class PrintManager {
     stateManager: StateManager
     currentPrint: PrintInfo
-    currentPrintFile: string[]
+    currentPrintFile: { originalSize: number; cleanedLine: string }[] = []
     sentCommands: Map<number, CommandInfo> = new Map()
     analyzedResult?: AnalysisResult
     correctionFactor: number = 0
     printId = crypto.randomBytes(20).toString("hex")
-    private worker: Worker
+    private remainder = ""
+    private readFileDone = false
 
     constructor(stateManager: StateManager) {
         this.stateManager = stateManager
@@ -30,6 +29,8 @@ export default class PrintManager {
                     globals.CONNECTIONSTATE.PREPARING,
                     null
                 )
+                this.remainder = ""
+                this.readFileDone = false
                 this.printId = crypto.randomBytes(20).toString("hex")
                 let file = await this.stateManager.storage.getFileByName(
                     fileName
@@ -51,79 +52,86 @@ export default class PrintManager {
                     })
 
                 this.currentPrint = new PrintInfo(file)
-                if (this.worker != null) {
-                    await new Promise<void>((resolve, reject) => {
-                        this.worker
-                            .terminate()
-                            .then(() => {
-                                this.worker.removeAllListeners()
-                                this.worker = null
-                                return resolve()
-                            })
-                            .catch((e) => {
-                                console.error(e)
-                                return reject(e)
-                            })
-                    })
-                }
-                this.worker = new Worker(
-                    path.join(__dirname, "../analyzer_worker.js"),
-                    {
-                        workerData: {
-                            file: file.data.toString("utf8"),
-                            printId: this.printId,
-                        },
-                    }
-                )
-                this.worker.on("message", (result) => {
-                    if (this.printId !== result.printId) {
-                        return
-                    }
-                    if (!this.currentPrint) {
-                        return
-                    }
-                    console.log("WORKER" + result.totalTimeTaken)
-                    this.analyzedResult = new AnalysisResult(
-                        result.layerBeginEndMap,
-                        result.totalTimeTaken,
-                        new Map()
-                    )
-
-                    this.stateManager.storage.log(
-                        LogPriority.Debug,
-                        "PRINT_ANALYZED",
-                        "Estimated " +
-                            result.totalTimeTaken +
-                            " seconds for print " +
-                            file.name
-                    )
-                    if (this.analyzedResult.layerBeginEndMap.size > 0) {
-                        this.currentPrint.setPredictedFirstPrintLayer(
-                            Array.from(
-                                this.analyzedResult.layerBeginEndMap.values()
+                let id = (" " + this.printId).slice(1)
+                this.stateManager.storage
+                    .getFileByName(this.currentPrint.file.name)
+                    .then((file) => {
+                        let analyzer = new Analyzer()
+                        analyzer.analyze(file.data).then((result) => {
+                            if (this.printId !== id) {
+                                return
+                            }
+                            if (!this.currentPrint) {
+                                return
+                            }
+                            this.analyzedResult = new AnalysisResult(
+                                result.layerBeginEndMap,
+                                result.totalTimeTaken
                             )
-                                .map((i) => i.beginLineNr)
-                                .sort((a, b) => (a > b ? 1 : -1))[0]
+
+                            this.stateManager.storage.log(
+                                LogPriority.Debug,
+                                "PRINT_ANALYZED",
+                                "Estimated " +
+                                    result.totalTimeTaken +
+                                    " seconds for print " +
+                                    file.name
+                            )
+                            if (this.analyzedResult.layerBeginEndMap.size > 0) {
+                                this.currentPrint.setPredictedFirstPrintLayer(
+                                    Array.from(
+                                        this.analyzedResult.layerBeginEndMap.values()
+                                    )
+                                        .map((i) => i.beginLineNr)
+                                        .sort((a, b) => (a > b ? 1 : -1))[0]
+                                )
+                            }
+                        })
+                    })
+                    .catch((e) => {
+                        this.stateManager.throwError(e)
+                        this.stateManager.storage.log(
+                            LogPriority.Error,
+                            "GCODE_ANALYZE",
+                            e
                         )
-                    }
-                })
+                    })
             } catch (e) {
                 this.stateManager.throwError(e)
                 return reject(e)
             }
+            this.currentPrint.file.data!.on("data", (chunk: string) => {
+                chunk = this.remainder + chunk.replace(/\r\n?|\n/g, "\n")
+                this.remainder = ""
+                if (!chunk.endsWith("\n")) {
+                    let lastIndex = chunk.lastIndexOf("\n")
+                    this.remainder = chunk.substr(lastIndex)
+                    chunk = chunk.substr(0, lastIndex)
+                }
+                let parsedStrings = this.sanitizeLines(chunk)
+                this.currentPrintFile = [
+                    ...this.currentPrintFile,
+                    ...parsedStrings,
+                ]
+                this.currentPrint.file.data!.pause()
+            })
 
-            this.currentPrintFile = this.parseFile(this.currentPrint.file)
+            this.currentPrint.file.data!.on("end", () => {
+                this.readFileDone = true
+            })
+            this.currentPrint.file.data!.resume()
 
             this.stateManager.updateState(globals.CONNECTIONSTATE.PRINTING, {
                 printInfo: {
                     file: new File(
                         this.currentPrint.file.name,
                         this.currentPrint.file.uploaded,
+                        this.currentPrint.file.size,
                         null
                     ),
                     progress: (
-                        (this.currentPrint.getCurrentRow() /
-                            (this.currentPrintFile.length + 1)) *
+                        (this.currentPrint.getBytesSent() /
+                            this.currentPrint.file.size) *
                         100
                     ).toFixed(2),
                     startTime: this.currentPrint.startTime,
@@ -139,15 +147,47 @@ export default class PrintManager {
             resolve()
         })
     }
-    sendPrintRow() {
+    private getLatestPrintRow(): Promise<{
+        originalSize: number
+        cleanedLine: string
+    }> {
+        if (this.currentPrintFile.length == 0 && this.readFileDone) {
+            return Promise.resolve(null)
+        }
+        if (
+            this.currentPrintFile.length < 200 &&
+            this.currentPrint.file.data!.isPaused()
+        ) {
+            this.currentPrint.file.data!.resume()
+        }
+        return new Promise((resolve, reject) => {
+            if (this.currentPrintFile.length == 0) {
+                if (this.currentPrintFile.length > 0) {
+                    return resolve(this.currentPrintFile.shift())
+                }
+                let iv = setInterval(() => {
+                    if (this.currentPrintFile.length > 0) {
+                        clearInterval(iv)
+                        return resolve(this.currentPrintFile.shift())
+                    }
+                })
+            } else {
+                resolve(this.currentPrintFile.shift())
+            }
+        })
+    }
+    async sendPrintRow() {
         if (!this.currentPrint) {
             return
         }
         if (this.stateManager.state !== globals.CONNECTIONSTATE.PRINTING) {
             return this.clearLastPrint()
         }
-
-        if (this.currentPrint.getCurrentRow() > this.currentPrintFile.length) {
+        if (
+            this.currentPrintFile.filter((i) => i.cleanedLine.trim() !== "")
+                .length <= 1 &&
+            this.readFileDone
+        ) {
             this.finishPrintActions()
                 .then(() => {
                     this.clearLastPrint()
@@ -193,14 +233,26 @@ export default class PrintManager {
                     this.notifyNewPredictedEndTime()
                 }
             }
+            let line = await this.getLatestPrintRow()
+            if (line === null) {
+                console.log("line = null")
+                return null
+            }
+            if (typeof line != "object") {
+                console.log(typeof line)
+            }
+            while (line.cleanedLine.trim() == "") {
+                this.currentPrint.addBytesSent(line.originalSize)
+                line = await this.getLatestPrintRow()
+            }
             this.sendPreparedString(
                 this.currentPrint.getCurrentRow(),
-                this.currentPrintFile[this.currentPrint.getCurrentRow() - 1],
-                (result: parsedResponse) => {
+                line.cleanedLine,
+                () => {
                     if (!this.currentPrint) {
                         return
                     }
-
+                    this.currentPrint.addBytesSent(line.originalSize)
                     this.currentPrint.nextRow()
                     this.updateProgress()
                     this.sendPrintRow()
@@ -210,8 +262,6 @@ export default class PrintManager {
     }
     private finishPrintActions(): Promise<void> {
         // todo: add notification thing
-        console.log(this.analyzedResult.totalTimeTaken)
-        console.log(this.currentPrint.getPredictedEndTime())
         return new Promise(async (resolve, reject) => {
             await this.stateManager.storage.log(
                 LogPriority.Debug,
@@ -243,8 +293,7 @@ export default class PrintManager {
             return
         }
         let currentProgress =
-            (this.currentPrint.getCurrentRow() /
-                (this.currentPrintFile.length + 1)) *
+            (this.currentPrint.getBytesSent() / this.currentPrint.file.size) *
             100
         if (
             this.currentPrint.getProgress().toFixed(2) !==
@@ -263,9 +312,6 @@ export default class PrintManager {
                     new Date().getTime() - this.currentPrint.startTime.getTime()
                 let estimatedBasedOnCurrentProgress =
                     (timeBusy / parseFloat(currentProgress.toFixed(2))) * 100
-                let timeEstimated =
-                    this.currentPrint.getPredictedEndTime().getTime() -
-                    this.currentPrint.startTime.getTime()
                 this.currentPrint.setPredictedEndTime(
                     estimatedBasedOnCurrentProgress / 1000,
                     Math.floor(currentProgress)
@@ -290,11 +336,7 @@ export default class PrintManager {
 
     private async clearLastPrint() {
         this.printId = crypto.randomBytes(20).toString("hex")
-        if (this.worker) {
-            await this.worker.terminate()
-            this.worker.removeAllListeners()
-            this.worker = null
-        }
+
         this.sentCommands = new Map()
         this.currentPrint = null
         this.currentPrintFile = []
@@ -342,19 +384,15 @@ export default class PrintManager {
         this.stateManager.connectionManager.send(preparedString, callback)
     }
 
-    parseFile(file?: File): string[] {
-        if (!file.data) {
-            this.stateManager.throwError("File object has no data specified")
-            return
-        }
-        let lines = file.data.toString("utf8").split(/\r?\n/)
-
-        return lines
-            .map((line) => {
-                return line.trim().replace(/;.*$/, "").replace(/\s*/g, "")
-            })
-            .filter((line) => {
-                return line.length > 0
-            })
+    sanitizeLines(
+        lineString: string
+    ): { originalSize: number; cleanedLine: string }[] {
+        let lines = lineString.split("\n")
+        return lines.map((line) => {
+            return {
+                originalSize: line.length + 1,
+                cleanedLine: line.replace(/;.*$/, "").replace(/\s*/g, ""),
+            }
+        })
     }
 }

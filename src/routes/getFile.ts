@@ -48,7 +48,7 @@ export default new Route(
                 "Content-Disposition",
                 'attachment; filename="' + file.name + '"'
             )
-            res.send(file.data.toString("ascii"))
+            file.data!.pipe(res)
         } catch (e) {
             console.error(e)
             return res.sendStatus(500)

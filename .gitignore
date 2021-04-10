@@ -5,3 +5,4 @@ storage.db
 build/
 *.zip
 out/
+files/

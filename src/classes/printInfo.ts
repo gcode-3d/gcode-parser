@@ -8,6 +8,7 @@ export default class PrintInfo {
     private predictions: number[] = []
     private predictedFirstPrintLayer = 0
     private lastPercentage = 0
+    private bytesSent = 0
     constructor(file: File) {
         this.file = file
 
@@ -35,15 +36,6 @@ export default class PrintInfo {
         if (percentage) {
             this.predictions[Math.round(percentage) + 10] = durationInSeconds
         }
-        let newAvg =
-            this.predictions.reduce((a, x) => a + x, 0) /
-            this.predictions.length
-        console.log(`[${newAvg}]`, percentage, Math.round(percentage) + 10)
-        // console.log(
-        //     `[${percentage}] ${oldAvg}s (${(oldAvg / 60).toFixed(
-        //         2
-        //     )}m) vs ${newAvg}s (${(newAvg / 60).toFixed(2)}m)`
-        // )
     }
 
     getPredictedEndTime(index?: number): Date {
@@ -68,5 +60,11 @@ export default class PrintInfo {
     }
     getProgress(): number {
         return this.progress
+    }
+    addBytesSent(bytes: number) {
+        this.bytesSent += bytes
+    }
+    getBytesSent(): number {
+        return this.bytesSent
     }
 }
