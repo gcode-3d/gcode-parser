@@ -5,7 +5,6 @@ import { IncomingMessage, Server } from "http"
 import StateManager from "./stateManager.js"
 import ExtWebSocket from "./interfaces/websocket"
 import { Socket } from "net"
-import ActionManager from "./classes/actionManager.js"
 import path from "path"
 import { readdir } from "fs"
 import Route from "./classes/route.js"
@@ -18,14 +17,12 @@ export default class Webserver {
     stateManager: StateManager
     server: Server
     wss: WebSocket.Server
-    actionManager: ActionManager
     isInSetupMode: boolean
     constructor(stateManager: StateManager) {
         this.isInSetupMode = false
         this.app = express()
 
         this.stateManager = stateManager
-        this.actionManager = new ActionManager(this.stateManager)
         this.stateManager.storage
             .needsSetup()
             .then((needsSetup) => {
@@ -226,48 +223,6 @@ export default class Webserver {
                     ...currentState,
                 },
             })
-            socket.on(
-                "message",
-                (
-                    data:
-                        | string
-                        | Uint8Array
-                        | Uint8ClampedArray
-                        | Uint16Array
-                        | Uint32Array
-                        | Int8Array
-                        | Int16Array
-                        | Int32Array
-                        | BigUint64Array
-                        | BigInt64Array
-                        | Float32Array
-                        | Float64Array
-                        | DataView
-                        | ArrayBuffer
-                        | SharedArrayBuffer
-                ) => {
-                    if (!socket.userInfo) {
-                        return socket.close()
-                    }
-                    if (typeof data != "string") {
-                        return
-                    }
-                    try {
-                        let jsonMessage: {
-                            action: string
-                            data: object
-                        } = JSON.parse(data as string)
-
-                        this.actionManager.execute(
-                            socket.userInfo,
-                            jsonMessage.action,
-                            jsonMessage.data
-                        )
-                    } catch (e) {
-                        console.log(e)
-                    }
-                }
-            )
         })
 
         wss.on("error", function (error) {
