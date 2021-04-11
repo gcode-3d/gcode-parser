@@ -37,7 +37,7 @@ export default new Route(
                 globals.CONNECTIONSTATE.PRINTING,
                 globals.CONNECTIONSTATE.PREPARING,
                 globals.CONNECTIONSTATE.FINISHING,
-            ]
+            ].includes(server.stateManager.state)
         ) {
             return res.status(403).json({
                 error: true,
