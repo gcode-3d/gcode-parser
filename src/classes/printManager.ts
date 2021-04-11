@@ -383,33 +383,45 @@ export default class PrintManager {
         this.analyzedResult = null
     }
 
-    cancel() {
-        this.stateManager.storage
-            .log(LogPriority.Debug, "PRINT_CANCEL", this.currentPrint.file.name)
-            .then(() => {
-                if (
-                    this.stateManager.state === globals.CONNECTIONSTATE.PRINTING
-                ) {
-                    this.clearLastPrint()
-                    this.stateManager.connectionManager.send("M104 S0")
-                    if (this.stateManager.printer.temperatureInfo[0]?.bed) {
-                        this.stateManager.connectionManager.send("M140 S0")
-                    }
-                    if (this.stateManager.printer.temperatureInfo[0]?.chamber) {
-                        this.stateManager.connectionManager.send("M141 S0")
-                    }
-                    return this.stateManager.updateState(
-                        globals.CONNECTIONSTATE.CONNECTED,
-                        null
-                    )
-                }
-            })
-            .catch((e) => {
-                return this.stateManager.updateState(
-                    globals.CONNECTIONSTATE.ERRORED,
-                    { errorDescription: e }
+    cancel(): Promise<void> {
+        return new Promise((resolve, reject) => {
+            this.stateManager.storage
+                .log(
+                    LogPriority.Debug,
+                    "PRINT_CANCEL",
+                    this.currentPrint.file.name
                 )
-            })
+                .then(() => {
+                    if (
+                        this.stateManager.state ===
+                        globals.CONNECTIONSTATE.PRINTING
+                    ) {
+                        this.clearLastPrint()
+                        this.stateManager.connectionManager.send("M104 S0")
+                        if (this.stateManager.printer.temperatureInfo[0]?.bed) {
+                            this.stateManager.connectionManager.send("M140 S0")
+                        }
+                        if (
+                            this.stateManager.printer.temperatureInfo[0]
+                                ?.chamber
+                        ) {
+                            this.stateManager.connectionManager.send("M141 S0")
+                        }
+                        this.stateManager.updateState(
+                            globals.CONNECTIONSTATE.CONNECTED,
+                            null
+                        )
+                        resolve()
+                    }
+                })
+                .catch((e) => {
+                    this.stateManager.updateState(
+                        globals.CONNECTIONSTATE.ERRORED,
+                        { errorDescription: e }
+                    )
+                    return reject(e)
+                })
+        })
     }
 
     sendPreparedString(
