@@ -441,6 +441,13 @@ export default class PrintManager {
     ): { originalSize: number; cleanedLine: string }[] {
         let lines = lineString.split("\n")
         return lines.map((line) => {
+            if (line.includes("M117")) {
+                // Don't trim notification commands.
+                return {
+                    originalSize: line.length + 1,
+                    cleanedLine: line.replace(/;.*$/, ""),
+                }
+            }
             return {
                 originalSize: line.length + 1,
                 cleanedLine: line.replace(/;.*$/, "").replace(/\s*/g, ""),

@@ -8,7 +8,6 @@ import SerialConnectionManager from "./serial/index.js"
 import * as config from "../config.json"
 import PrintManager from "./classes/printManager.js"
 import stateInfo from "./interfaces/stateInfo"
-import Device from "./classes/device.js"
 
 export default class StateManager {
     state: number
