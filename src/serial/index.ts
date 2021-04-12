@@ -4,11 +4,8 @@ import GLOBALS from "../globals.js"
 import globals from "../globals.js"
 import Readline from "@serialport/parser-readline"
 import ExtSerialPort from "../interfaces/serialport"
-import PrintInfo from "../classes/printInfo"
-import { printDescription } from "../interfaces/stateInfo"
-import CommandInfo from "../classes/CommandInfo"
+import { v4 as uuid } from "uuid"
 import LogPriority from "../enums/logPriority"
-import Device from "../classes/device"
 
 export default class SerialConnectionManager {
     stateManager: StateManager
@@ -19,7 +16,11 @@ export default class SerialConnectionManager {
     }
     connection: ExtSerialPort
     parser: Stream
-    queue: { message: string; callback?: (result: parsedResponse) => void }[]
+    queue: {
+        message: string
+        callback?: (result: parsedResponse) => void
+        id?: string
+    }[]
     private sentCommandsWithLineNr: Map<
         number,
         { command: string; time: Date }
@@ -76,7 +77,11 @@ export default class SerialConnectionManager {
         })
         return this.connection
     }
-    send(message: string, callback?: (response: parsedResponse) => void) {
+    send(
+        message: string,
+        callback?: (response: parsedResponse) => void
+    ): string {
+        let id = uuid()
         if (this.lastCommand.code == null) {
             const matches = message.match(/\n?(N\d+ ?)?(G\d+|M\d+)/)
             if (matches == null) {
@@ -97,14 +102,16 @@ export default class SerialConnectionManager {
             }
             this.stateManager.webserver.sendMessageToClients(
                 message,
-                globals.TERMINALLINETYPES.INPUT
+                globals.TERMINALLINETYPES.INPUT,
+                id
             )
-
             this.connection.writeDrain("\n" + message + "\n")
             this.connection.writeDrain("\n")
+            return id
         } else {
             // still waiting on a callback or entries before
-            this.queue.push({ message, callback })
+            this.queue.push({ message, callback, id })
+            return id
         }
     }
 
@@ -174,7 +181,8 @@ export default class SerialConnectionManager {
                 }
                 this.stateManager.webserver.sendMessageToClients(
                     responses,
-                    globals.TERMINALLINETYPES.OUTPUT
+                    globals.TERMINALLINETYPES.OUTPUT,
+                    null
                 )
                 if (this.queue.length > 0) {
                     let entry = this.queue.shift()
@@ -196,6 +204,11 @@ export default class SerialConnectionManager {
                             entry.callback(response)
                         }
                     })
+                    this.stateManager.webserver.sendMessageToClients(
+                        entry.message,
+                        globals.TERMINALLINETYPES.INPUT,
+                        entry.id
+                    )
                 }
             } else if (data.startsWith("ok")) {
                 let code = "?"
@@ -216,17 +229,11 @@ export default class SerialConnectionManager {
                     }
                 }
 
-                const responses = this.lastCommand.responses.join("\n")
-
                 if (this.lastCommand.callback != null) {
                     let result = this.stateManager.parser.parseResponse(
                         code,
                         [data],
                         true
-                    )
-                    let linenr = this.stateManager.parser.parseLineNr(data)
-                    let commandInfo = this.stateManager.printManager.sentCommands.get(
-                        linenr
                     )
                     this.lastCommand.callback(result)
                 }
@@ -257,12 +264,14 @@ export default class SerialConnectionManager {
                 }
                 return this.stateManager.webserver.sendMessageToClients(
                     data,
-                    globals.TERMINALLINETYPES.OUTPUT
+                    globals.TERMINALLINETYPES.OUTPUT,
+                    null
                 )
             } else if (data.startsWith("echo")) {
                 return this.stateManager.webserver.sendMessageToClients(
                     data,
-                    globals.TERMINALLINETYPES.OUTPUT
+                    globals.TERMINALLINETYPES.OUTPUT,
+                    null
                 )
             } else if (
                 this.stateManager.printer.capabilities.has(

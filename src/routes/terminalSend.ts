@@ -1,6 +1,5 @@
 import Route from "../classes/route"
 import UserTokenResult from "../classes/UserTokenResult"
-import LogPriority from "../enums/logPriority"
 import globals from "../globals"
 
 export default new Route(
@@ -50,7 +49,11 @@ export default new Route(
                 .json({ error: true, message: "Printer is not connected" })
         }
 
-        server.stateManager.connectionManager.send(req.body.message)
-        res.sendStatus(200)
+        let messageId = server.stateManager.connectionManager.send(
+            req.body.message
+        )
+        res.json({
+            messageId,
+        })
     }
 )
