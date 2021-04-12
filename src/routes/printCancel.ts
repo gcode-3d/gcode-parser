@@ -3,8 +3,8 @@ import UserTokenResult from "../classes/UserTokenResult"
 import globals from "../globals"
 
 export default new Route(
-    "/api/print/cancel",
-    "PUT",
+    "/api/print/",
+    "DELETE",
     0,
     async (req, res, server) => {
         if (!req.headers.authorization) {

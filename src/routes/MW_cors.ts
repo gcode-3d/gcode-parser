@@ -6,6 +6,8 @@ export default new Route("1", "MIDDLEWARE", 2, (req, res, _, next) => {
         res.setHeader("Access-Control-Allow-Methods", "GET, PUT")
     } else if (req.url.startsWith("/api/file")) {
         res.setHeader("Access-Control-Allow-Methods", "GET, DELETE")
+    } else if (req.url.startsWith("/api/print")) {
+        res.setHeader("Access-Control-Allow-Methods", "GET, PUT, POST, DELETE")
     } else if (req.url.startsWith("/api/connection")) {
         res.setHeader("Access-Control-Allow-Methods", "GET, DELETE, PUT")
     } else {
