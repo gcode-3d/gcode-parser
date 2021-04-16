@@ -49,7 +49,7 @@ export default new Route("/api/submitSetup", "POST", 1, (req, res, server) => {
                             data.account.password
                         )
                         await server.stateManager.storage.saveDevice(device)
-                        server.stateManager.storage.setSetting(
+                        await server.stateManager.storage.setSetting(
                             Setting.SelectedDevice,
                             device.name
                         )
