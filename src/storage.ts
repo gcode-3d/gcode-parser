@@ -56,7 +56,7 @@ export default class Storage {
             )
 
             this.db.run(
-                "CREATE TABLE IF NOT EXISTS settings (selectedDevice varchar(255), BstartOnBoot boolean default 0 not null)"
+                "CREATE TABLE IF NOT EXISTS settings (S_selectedDevice varchar(255), B_startOnBoot boolean default 0 not null, N_adjustCorrectionF boolean default 0 not null)"
             )
 
             await this.fetchSettings()
@@ -80,14 +80,16 @@ export default class Storage {
                 }
                 if (!row) {
                     this.db.run(
-                        "insert into settings (selectedDevice, BstartOnBoot) values (null, false)"
+                        "insert into settings (S_selectedDevice, B_startOnBoot, N_adjustCorrectionF) values (null, false, false)"
                     )
                     return this.fetchSettings().then(resolve).catch(reject)
                 } else {
                     this.settings = new Map()
                     Object.entries(row).forEach((entry: any) => {
-                        if (entry[0].startsWith("B")) {
+                        if (entry[0].startsWith("B_")) {
                             this.settings.set(entry[0], entry[1] == 1)
+                        } else if (entry[0].startsWith("N_")) {
+                            this.settings.set(entry[0], parseFloat(entry[1]))
                         } else {
                             this.settings.set(entry[0], entry[1])
                         }

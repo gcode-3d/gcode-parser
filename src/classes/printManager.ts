@@ -9,6 +9,7 @@ import crypto from "crypto"
 import Analyzer, { AnalysisResult } from "gcode_print_time_analyzer"
 import { Worker } from "worker_threads"
 import path from "path"
+import Setting from "../enums/setting"
 
 export default class PrintManager {
     stateManager: StateManager
@@ -24,6 +25,14 @@ export default class PrintManager {
 
     constructor(stateManager: StateManager) {
         this.stateManager = stateManager
+        this.stateManager.storage.getSettings()
+        .then(settings => {
+            this.correctionFactor = settings.get(Setting.AdjustCorrectionFactor) as number
+        })
+        .catch(error => {
+            console.error(error)
+            this.stateManager.storage.log(LogPriority.Error, "FETCH_CORRECTIONFACTOR", error)
+        })
     }
 
     startPrint(fileName: string): Promise<void> {

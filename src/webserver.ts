@@ -18,6 +18,12 @@ export default class Webserver {
     server: Server
     wss: WebSocket.Server
     isInSetupMode: boolean
+    messageStore: {
+        id: string
+        message: string
+        type: string
+        time: Date
+    }[] = []
     constructor(stateManager: StateManager) {
         this.isInSetupMode = false
         this.app = express()
@@ -143,6 +149,7 @@ export default class Webserver {
             noServer: true,
             maxPayload: 3000,
         })
+        this.createIntervals()
         this.server.on(
             "upgrade",
             async (request: IncomingMessage, socket: Socket, head: Buffer) => {
@@ -234,6 +241,26 @@ export default class Webserver {
         })
         return wss
     }
+
+    private createIntervals() {
+        setInterval(() => {
+            if (this.messageStore.length == 0) {
+                return
+            }
+            this.wss.clients.forEach((socket: ExtWebSocket) => {
+                if (
+                    !socket.userInfo.permissions.hasPermission("terminal.read")
+                ) {
+                    return
+                }
+                socket.sendJSON({
+                    type: "message_receive",
+                    content: this.messageStore,
+                })
+            })
+            this.messageStore = []
+        }, 1000)
+    }
     sendTemperatureToClients(data: tempInfo) {
         this.wss.clients.forEach(function (socket: ExtWebSocket) {
             socket.sendJSON({
@@ -242,16 +269,21 @@ export default class Webserver {
             })
         })
     }
-    sendMessageToClients(message: string, type: string, id: string) {
-        this.wss.clients.forEach(function (socket: ExtWebSocket) {
+    sendSettingUpdateEvent(setting_name: string, setting_value: string) {
+        this.wss.clients.forEach((socket: ExtWebSocket) => {
+            if (!socket.userInfo.permissions.hasPermission("settings.edit")) {
+                return
+            }
             socket.sendJSON({
-                type: "message_receive",
+                type: "setting_update",
                 content: {
-                    type,
-                    message,
-                    id,
+                    setting_name,
+                    setting_value,
                 },
             })
         })
+    }
+    sendMessageToClients(message: string, type: string, id: string) {
+        this.messageStore.push({ message, type, id, time: new Date() })
     }
 }

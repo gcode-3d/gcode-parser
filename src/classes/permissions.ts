@@ -15,7 +15,7 @@ export default class Permissions {
             "print_state.edit",
             "settings.edit",
             "permissions.edit",
-            "terminal.watch",
+            "terminal.read",
             "terminal.send",
             "webcam.view",
             "update.check",
