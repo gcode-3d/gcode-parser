@@ -1,6 +1,6 @@
 enum Setting {
-    SelectedDevice = "S_selectedDevice",
+    SelectedDevice = "D_selectedDevice",
     StartBoot = "B_startOnBoot",
-    AdjustCorrectionFactor = "B_adjustCorrectionF",
+    AdjustCorrectionFactor = "N_adjustCorrectionF",
 }
 export default Setting

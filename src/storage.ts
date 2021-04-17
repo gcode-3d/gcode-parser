@@ -54,9 +54,8 @@ export default class Storage {
             this.db.run(
                 "CREATE TABLE IF NOT EXISTS logs (date datetime not null, shortDescription varchar(255) not null, priority integer(3) not null, details TEXT not null )"
             )
-
             this.db.run(
-                "CREATE TABLE IF NOT EXISTS settings (S_selectedDevice varchar(255), B_startOnBoot boolean default 0 not null, N_adjustCorrectionF boolean default 0 not null)"
+                "CREATE TABLE IF NOT EXISTS settings (id varchar(255) primary key, type integer(3) not null default 0, value TEXT)"
             )
 
             await this.fetchSettings()
@@ -64,39 +63,81 @@ export default class Storage {
         })
     }
 
+    private createDefaultSettings(): Promise<void> {
+        function getType(char: string) {
+            if (char == "B_") {
+                return "boolean"
+            } else if (char == "N_") {
+                return "number"
+            } else if (char == "D_") {
+                return "device"
+            } else {
+                return "string"
+            }
+        }
+        return new Promise((resolve, reject) => {
+            this.db.run(
+                "INSERT INTO settings (id, type, value) VALUES " +
+                    Object.keys(Setting)
+                        .map(() => "(?, ?, ?)")
+                        .join(", "),
+                Object.values(Setting)
+                    .map((value) => [value, getType(value.slice(0, 2)), null])
+                    .flat(1),
+                (error: Error) => {
+                    if (error) {
+                        console.error(error)
+                        return reject(error)
+                    }
+                    return resolve()
+                }
+            )
+        })
+    }
+
     private fetchSettings(): Promise<Map<Setting, boolean | number | string>> {
         return new Promise((resolve, reject) => {
-            this.db.get("select * from settings", (error: Error, row: any) => {
-                if (error) {
-                    return this.log(
-                        LogPriority.Error,
-                        "SETTINGS_FETCH",
-                        error.message
-                    )
-                        .then(() => {
-                            return reject(error)
-                        })
-                        .catch(reject)
+            this.db.all(
+                "select * from settings",
+                async (error: Error, rows: any) => {
+                    if (error) {
+                        return this.log(
+                            LogPriority.Error,
+                            "SETTINGS_FETCH",
+                            error.message
+                        )
+                            .then(() => {
+                                return reject(error)
+                            })
+                            .catch(reject)
+                    }
+                    if (!rows || rows.length == 0) {
+                        await this.createDefaultSettings()
+                        return this.fetchSettings().then(resolve).catch(reject)
+                    } else {
+                        this.settings = new Map()
+                        rows.forEach(
+                            (row: {
+                                id: Setting
+                                type: string
+                                value: null
+                            }) => {
+                                if (row.type == "boolean") {
+                                    this.settings.set(row.id, row.value == "1")
+                                } else if (row.type == "number") {
+                                    this.settings.set(
+                                        row.id,
+                                        parseFloat(row.value)
+                                    )
+                                } else {
+                                    this.settings.set(row.id, row.value)
+                                }
+                            }
+                        )
+                        return resolve(this.settings)
+                    }
                 }
-                if (!row) {
-                    this.db.run(
-                        "insert into settings (S_selectedDevice, B_startOnBoot, N_adjustCorrectionF) values (null, false, false)"
-                    )
-                    return this.fetchSettings().then(resolve).catch(reject)
-                } else {
-                    this.settings = new Map()
-                    Object.entries(row).forEach((entry: any) => {
-                        if (entry[0].startsWith("B_")) {
-                            this.settings.set(entry[0], entry[1] == 1)
-                        } else if (entry[0].startsWith("N_")) {
-                            this.settings.set(entry[0], parseFloat(entry[1]))
-                        } else {
-                            this.settings.set(entry[0], entry[1])
-                        }
-                    })
-                    return resolve(this.settings)
-                }
-            })
+            )
         })
     }
 
@@ -112,12 +153,18 @@ export default class Storage {
             if (!this.settings) {
                 await this.fetchSettings()
             }
+            if (key.startsWith("D_")) {
+                let device = await this.getDeviceByName(value as string)
+                if (!device) {
+                    return reject("Please select a valid device.")
+                }
+            }
             let statement = this.db.prepare(
-                "update settings set " + key + " = ?"
+                "update settings set value = ? where id = ?"
             )
-            statement.run([value], async (result: any, error: Error) => {
+            statement.run([value, key], async (result: any, error: Error) => {
                 if (error) {
-                    this.log(LogPriority.Error, "SETTINGS_FETCH", error.message)
+                    this.log(LogPriority.Error, "SETTINGS_SET", error.message)
                         .then(() => reject(error))
                         .catch(reject)
                 }
