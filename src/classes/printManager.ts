@@ -25,14 +25,23 @@ export default class PrintManager {
 
     constructor(stateManager: StateManager) {
         this.stateManager = stateManager
-        this.stateManager.storage.getSettings()
-        .then(settings => {
-            this.correctionFactor = settings.get(Setting.AdjustCorrectionFactor) as number
-        })
-        .catch(error => {
-            console.error(error)
-            this.stateManager.storage.log(LogPriority.Error, "FETCH_CORRECTIONFACTOR", error)
-        })
+        this.stateManager.storage
+            .getSettings()
+            .then((settings) => {
+                this.correctionFactor = settings.has(
+                    Setting.AdjustCorrectionFactor
+                )
+                    ? (settings.get(Setting.AdjustCorrectionFactor) as number)
+                    : 0
+            })
+            .catch((error) => {
+                console.error(error)
+                this.stateManager.storage.log(
+                    LogPriority.Error,
+                    "FETCH_CORRECTIONFACTOR",
+                    error
+                )
+            })
     }
 
     startPrint(fileName: string): Promise<void> {
