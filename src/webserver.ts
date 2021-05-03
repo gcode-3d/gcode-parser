@@ -11,6 +11,7 @@ import Route from "./classes/route.js"
 import setupWizard from "./tools/setupWizard.js"
 import Device from "./classes/device.js"
 import Setting from "./enums/setting.js"
+import NotificationType from "./enums/notificationType.js"
 
 export default class Webserver {
     app: express.Application
@@ -285,5 +286,25 @@ export default class Webserver {
     }
     sendMessageToClients(message: string, type: string, id: string) {
         this.messageStore.push({ message, type, id, time: new Date() })
+    }
+
+    sendNotification(type: NotificationType, content: string) {
+        let id = uuid()
+        let date = new Date()
+        this.stateManager.storage
+            .storeNotification(id, content, type, new Date())
+            .then(() => {
+                this.wss.clients.forEach((client: ExtWebSocket) => {
+                    client.sendJSON({
+                        type: "notification",
+                        content: {
+                            id,
+                            timestamp: date.getTime(),
+                            type,
+                            content,
+                        },
+                    })
+                })
+            })
     }
 }

@@ -1,3 +1,6 @@
+import LogPriority from "./enums/logPriority"
+import NotificationType from "./enums/notificationType"
+import Setting from "./enums/setting"
 import Manager from "./stateManager"
 
 class Parser {
@@ -23,6 +26,33 @@ class Parser {
         responses: string[],
         returnValues: boolean
     ): parsedResponse {
+        let notificationResponses = responses.filter((response) =>
+            response.trim().startsWith("//action:notification")
+        )
+        if (notificationResponses.length > 0) {
+            let content = notificationResponses[0]
+                .replace("//action:notification", "")
+                .trim()
+
+            this.stateManager.storage
+                .getSettings()
+                .then((settings) => {
+                    if (settings.get(Setting.savePrinterNotifications)) {
+                        this.stateManager.webserver.sendNotification(
+                            NotificationType.PrinterGenerated,
+                            content
+                        )
+                    }
+                })
+                .catch((e) => {
+                    console.error(e)
+                    this.stateManager.storage.log(
+                        LogPriority.Error,
+                        "FETCHSETTINGS_NOTIFICATION",
+                        e.message || e
+                    )
+                })
+        }
         switch (code) {
             case "M115":
                 const firmwareKeys = responses[0].match(/([A-Z_]+:)/g)

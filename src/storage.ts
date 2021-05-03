@@ -13,6 +13,7 @@ import LogEntry from "./classes/LogEntry.js"
 import fs from "fs"
 import path from "path"
 import { Readable } from "stream"
+import NotificationType from "./enums/notificationType.js"
 
 export default class Storage {
     private db: Database
@@ -56,6 +57,9 @@ export default class Storage {
             )
             this.db.run(
                 "CREATE TABLE IF NOT EXISTS settings (id varchar(255) primary key, type integer(3) not null default 0, value TEXT)"
+            )
+            this.db.run(
+                "CREATE TABLE IF NOT EXISTS notification (id varchar(36) primary key, type integer(3) not null, content TEXT not null, date DATETIME default( DATETIME('now')), dismissed Boolean not null default 0, dismissTime DATETIME )"
             )
 
             await this.fetchSettings()
@@ -651,6 +655,65 @@ export default class Storage {
                     )
                 }
             )
+        })
+    }
+
+    storeNotification(
+        id: string,
+        content: string,
+        type: NotificationType,
+        time: Date
+    ): Promise<void> {
+        return new Promise((resolve, reject) => {
+            let statement = this.db.prepare(
+                "insert into notification (id, content, type, date) values (?, ?, ?, ?)"
+            )
+            statement.run(id, content, type, time, (err: Error) => {
+                if (err) {
+                    return reject(err)
+                }
+                resolve()
+            })
+        })
+    }
+
+    listNotifications(): Promise<
+        {
+            id: string
+            content: string
+            date: Date
+            type: NotificationType
+            dismissed: boolean
+            dismissTime?: Date
+        }[]
+    > {
+        return new Promise((resolve, reject) => {
+            this.db.all("select * from notification", (err: Error, rows) => {
+                if (err) {
+                    return reject(err)
+                }
+                rows.map((row) => {
+                    row.date = new Date(row.date)
+                    return row
+                })
+                resolve(rows)
+            })
+        })
+    }
+
+    dismissNotification(id: string, state: boolean): Promise<void> {
+        return new Promise((resolve, reject) => {
+            let statement = this.db.prepare(
+                "update notification set dismissed = " +
+                    state.toString() +
+                    ", dismissTime = datetime('now') where id = ?"
+            )
+            statement.run(id, (err: Error) => {
+                if (err) {
+                    return reject(err)
+                }
+                resolve()
+            })
         })
     }
 }

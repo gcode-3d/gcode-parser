@@ -6,10 +6,11 @@ import PrintInfo from "./printInfo"
 import { printDescription } from "../interfaces/stateInfo"
 import LogPriority from "../enums/logPriority"
 import crypto from "crypto"
-import Analyzer, { AnalysisResult } from "gcode_print_time_analyzer"
+import { AnalysisResult } from "gcode_print_time_analyzer"
 import { Worker } from "worker_threads"
 import path from "path"
 import Setting from "../enums/setting"
+import NotificationType from "../enums/notificationType"
 
 export default class PrintManager {
     stateManager: StateManager
@@ -82,6 +83,10 @@ export default class PrintManager {
                         )
                     })
 
+                this.stateManager.webserver.sendNotification(
+                    NotificationType.PrintState,
+                    `Print started: ${file.name}`
+                )
                 this.currentPrint = new PrintInfo(file)
                 let id = (" " + this.printId).slice(1)
                 this.stateManager.storage
@@ -314,7 +319,6 @@ export default class PrintManager {
         }
     }
     private finishPrintActions(): Promise<void> {
-        // todo: add notification thing
         return new Promise(async (resolve) => {
             try {
                 await this.stateManager.storage.log(
@@ -330,6 +334,10 @@ export default class PrintManager {
                             (new Date().getTime() -
                                 this.currentPrint.startTime.getTime())
                     ).toFixed(2)}`
+                )
+                this.stateManager.webserver.sendNotification(
+                    NotificationType.PrintState,
+                    `Print finished: ${this.currentPrint.file.name}`
                 )
                 console.log(
                     `FILE: ${
@@ -414,6 +422,11 @@ export default class PrintManager {
                         this.stateManager.state ===
                         globals.CONNECTIONSTATE.PRINTING
                     ) {
+                        let filename = this.currentPrint.file.name
+                        this.stateManager.webserver.sendNotification(
+                            NotificationType.PrintState,
+                            `Print Canceled: ${filename}`
+                        )
                         this.clearLastPrint()
                         this.stateManager.connectionManager.send("M104 S0")
                         if (this.stateManager.printer.temperatureInfo[0]?.bed) {
