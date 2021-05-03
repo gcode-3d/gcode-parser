@@ -5,7 +5,6 @@ const saltRounds = 10
 import bcrypt from "bcrypt"
 import crypto from "crypto"
 import UserTokenResult from "./classes/UserTokenResult.js"
-import Device from "./classes/device.js"
 import File from "./classes/file.js"
 import LogPriority from "./enums/logPriority.js"
 import Setting from "./enums/setting.js"
@@ -50,9 +49,6 @@ export default class Storage {
                 "CREATE TABLE IF NOT EXISTS  tokens (username varchar(30) not null,token varchar(50) not null primary key,expire datetime, foreign key (username) REFERENCES users(username))"
             )
             this.db.run(
-                "CREATE TABLE IF NOT EXISTS devices (name varchar(255) PRIMARY KEY, path varchar(255) not null, width integer(4) not null, depth integer(4) not null, height integer(4) not null, baud varchar(10) not null default 'Auto', heatedBed boolean not null, heatedChamber boolean not null)"
-            )
-            this.db.run(
                 "CREATE TABLE IF NOT EXISTS logs (date datetime not null, shortDescription varchar(255) not null, priority integer(3) not null, details TEXT not null )"
             )
             this.db.run(
@@ -73,8 +69,6 @@ export default class Storage {
                 return "boolean"
             } else if (char == "N_") {
                 return "number"
-            } else if (char == "D_") {
-                return "device"
             } else {
                 return "string"
             }
@@ -156,12 +150,6 @@ export default class Storage {
         return new Promise(async (resolve, reject) => {
             if (!this.settings) {
                 await this.fetchSettings()
-            }
-            if (key.startsWith("D_")) {
-                let device = await this.getDeviceByName(value as string)
-                if (!device) {
-                    return reject("Please select a valid device.")
-                }
             }
             let statement = this.db.prepare(
                 "update settings set value = ? where id = ?"
@@ -289,92 +277,29 @@ export default class Storage {
         })
     }
 
-    listDeviceConfigNames(): Promise<string[]> {
+    saveDevice(
+        width: number = 0,
+        depth: number = 0,
+        height: number = 0,
+        path: string,
+        baud: number,
+        heatedBed: boolean,
+        heatedChamber: boolean
+    ): Promise<void> {
         return new Promise((resolve, reject) => {
-            var statement = this.db.prepare("select name from devices")
-            statement.all((err: Error, rows: string[]) => {
-                if (err) {
-                    return reject(err)
-                }
-                return resolve(rows)
-            })
-        })
-    }
+            let promises = [
+                this.setSetting(Setting.DeviceWidth, width),
+                this.setSetting(Setting.DeviceDepth, depth),
+                this.setSetting(Setting.DeviceHeight, height),
+                this.setSetting(Setting.DevicePath, path),
+                this.setSetting(Setting.DeviceBaud, baud),
+                this.setSetting(Setting.DeviceHasHeatedBed, heatedBed),
+                this.setSetting(Setting.DeviceHasHeatedChamber, heatedChamber),
+            ]
 
-    listDevices(): Promise<Device[]> {
-        return new Promise((resolve, reject) => {
-            var statement = this.db.prepare("select * from devices")
-            statement.all((err, rows) => {
-                if (err) {
-                    return reject(err)
-                }
-                let devices: Device[] = rows.map(
-                    (row) =>
-                        new Device(
-                            row.name,
-                            row.path,
-                            row.width,
-                            row.depth,
-                            row.height,
-                            row.heatedBed,
-                            row.heatedChamber,
-                            row.baud
-                        )
-                )
-                return resolve(devices)
-            })
-        })
-    }
-
-    saveDevice(device: Device): Promise<void> {
-        return new Promise((resolve, reject) => {
-            var statement = this.db.prepare(
-                "insert into devices (name, width, depth, height, path, baud, heatedBed, heatedChamber) values (?, ?, ?, ?, ?, ?, ?, ?)",
-                device.name,
-                device.width,
-                device.depth,
-                device.height,
-                device.path,
-                device.baud,
-                device.heatedBed,
-                device.heatedChamber
-            )
-            statement.run((err: Error, r: any) => {
-                if (err) {
-                    return reject(err)
-                }
-                return resolve()
-            })
-        })
-    }
-
-    getDeviceByName(name: string): Promise<Device> {
-        return new Promise((resolve, reject) => {
-            this.db.get(
-                "select * from devices where name = ?",
-                [name],
-                (error: Error, row: any) => {
-                    if (error) {
-                        return reject(error)
-                    }
-                    if (!row) {
-                        return resolve(null)
-                    } else {
-                        return resolve(
-                            new Device(
-                                row.name,
-                                row.path,
-                                row.width,
-                                row.depth,
-                                row.height,
-                                row.heatedBed,
-                                row.heatedChamber,
-                                row.baud
-                            )
-                        )
-                    }
-                }
-            )
+            Promise.all(promises)
+                .then(() => resolve())
+                .catch(reject)
         })
     }
 

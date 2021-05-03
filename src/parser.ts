@@ -37,7 +37,7 @@ class Parser {
             this.stateManager.storage
                 .getSettings()
                 .then((settings) => {
-                    if (settings.get(Setting.savePrinterNotifications)) {
+                    if (settings.get(Setting.StorePrinterNotifications)) {
                         this.stateManager.webserver.sendNotification(
                             NotificationType.PrinterGenerated,
                             content

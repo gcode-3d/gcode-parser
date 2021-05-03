@@ -1,7 +1,5 @@
 import Route from "../classes/route"
 import setupScheme from "../schemes/setupNew"
-import Device from "../classes/device"
-import Setting from "../enums/setting"
 
 export default new Route("/api/submitSetup", "POST", 1, (req, res, server) => {
     setupScheme
@@ -33,25 +31,19 @@ export default new Route("/api/submitSetup", "POST", 1, (req, res, server) => {
                         })
                     }
 
-                    let device = new Device(
-                        data.printInfo.printerName,
-                        devicePath,
-                        data.printInfo.xValue,
-                        data.printInfo.yValue,
-                        data.printInfo.zValue,
-                        data.printInfo.heatedBed,
-                        data.printInfo.heatedChamber,
-                        (result as connectionInfo).baudRate.toString()
-                    )
                     try {
                         await server.stateManager.storage.saveUser(
                             data.account.username,
                             data.account.password
                         )
-                        await server.stateManager.storage.saveDevice(device)
-                        await server.stateManager.storage.setSetting(
-                            Setting.SelectedDevice,
-                            device.name
+                        await server.stateManager.storage.saveDevice(
+                            data.printInfo.xValue,
+                            data.printInfo.yValue,
+                            data.printInfo.zValue,
+                            devicePath,
+                            (result as connectionInfo).baudRate,
+                            data.printInfo.heatedBed,
+                            data.printInfo.heatedChamber
                         )
                         res.sendStatus(200)
                         // exit program to restart

@@ -1,7 +1,13 @@
 enum Setting {
-    SelectedDevice = "D_selectedDevice",
+    DevicePath = "S_devicePath",
+    DeviceBaud = "N_deviceBaud",
     StartBoot = "B_startOnBoot",
     AdjustCorrectionFactor = "N_adjustCorrectionF",
-    savePrinterNotifications = "B_savePrinterNotifications",
+    StorePrinterNotifications = "B_savePrinterNotifications",
+    DeviceWidth = "N_deviceWidth",
+    DeviceHeight = "N_deviceHeight",
+    DeviceDepth = "N_deviceDepth",
+    DeviceHasHeatedBed = "B_deviceHB",
+    DeviceHasHeatedChamber = "B_deviceHC",
 }
 export default Setting

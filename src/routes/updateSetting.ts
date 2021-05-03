@@ -67,18 +67,6 @@ export default new Route(
                     }
                     value = parseFloat(req.body.settingValue)
                     break
-                case "D_":
-                    let device = await server.stateManager.storage.getDeviceByName(
-                        req.body.settingValue
-                    )
-                    if (!device) {
-                        return res.status(404).json({
-                            error: true,
-                            message: `Cannot find a device named "${req.body.settingValue}".`,
-                        })
-                    }
-                    value = device.name
-                    break
                 default:
                     return res.status(400).json({
                         error: true,

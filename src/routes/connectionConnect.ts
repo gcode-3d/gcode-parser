@@ -1,4 +1,3 @@
-import Device from "../classes/device"
 import Route from "../classes/route"
 import UserTokenResult from "../classes/UserTokenResult"
 import LogPriority from "../enums/logPriority"
@@ -40,45 +39,20 @@ export default new Route(
         }
 
         try {
-            let device: Device
+            let settings = await server.stateManager.storage.getSettings()
 
-            if (req.body && req.body.device) {
-                if (
-                    req.body.device.length < 0 ||
-                    req.body.device.length > 255
-                ) {
-                    return res.status(400).json({
-                        error: true,
-                        message:
-                            "'Device' field is not correct. Expecting a string, 1-255 long.",
-                    })
-                }
-
-                device = await server.stateManager.storage.getDeviceByName(
-                    req.body.device
-                )
-            } else {
-                let settings = await server.stateManager.storage.getSettings()
-                let deviceId = settings.get(Setting.SelectedDevice)
-
-                if (!deviceId) {
-                    return res.status(403).json({
-                        error: true,
-                        message:
-                            "No default device set up and no device specified in body",
-                    })
-                }
-
-                device = await server.stateManager.storage.getDeviceByName(
-                    deviceId as string
-                )
+            if (!settings.get(Setting.DevicePath)) {
+                return res.status(403).json({
+                    error: true,
+                    message: "Device path is not set.",
+                })
             }
 
-            if (!device) {
-                return res.sendStatus(404)
-            }
-
-            await connect(server.stateManager.connectionManager, device)
+            await connect(
+                server.stateManager.connectionManager,
+                settings.get(Setting.DevicePath) as string,
+                settings.get(Setting.DeviceBaud) as number
+            )
             return res.sendStatus(200)
         } catch (e) {
             server.stateManager.storage.log(
@@ -93,15 +67,10 @@ export default new Route(
 
 function connect(
     connectionManager: SerialConnectionManager,
-    device: Device
+    path: string,
+    baud?: number
 ): Promise<void> {
     return new Promise((resolve, reject) => {
-        connectionManager
-            .create(
-                device.path,
-                isNaN(parseInt(device.baud)) ? null : parseInt(device.baud)
-            )
-            .then(resolve)
-            .catch(reject)
+        connectionManager.create(path, baud).then(resolve).catch(reject)
     })
 }
