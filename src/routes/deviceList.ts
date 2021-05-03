@@ -1,5 +1,4 @@
 import Route from "../classes/route"
-import UserTokenResult from "../classes/UserTokenResult"
 
 export default new Route(
     "/api/deviceList",
