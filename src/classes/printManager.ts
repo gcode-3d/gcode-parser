@@ -92,6 +92,12 @@ export default class PrintManager {
                 this.stateManager.storage
                     .getFileByName(this.currentPrint.file.name)
                     .then((file) => {
+                        this.worker = new Worker(
+                            path.join(__dirname, "./analyzer_worker.js"),
+                            {
+                                workerData: { printId: this.printId },
+                            }
+                        )
                         file.data!.resume()
                         file.data!.on("data", (chunk) => {
                             this.worker.postMessage({
@@ -104,12 +110,6 @@ export default class PrintManager {
                             file.data!.destroy()
                             file.data!.removeAllListeners()
                         })
-                        this.worker = new Worker(
-                            path.join(__dirname, "./analyzer_worker.js"),
-                            {
-                                workerData: { printId: this.printId },
-                            }
-                        )
                         this.worker.on("exit", () => {
                             this.worker.removeAllListeners()
                             this.worker = null
