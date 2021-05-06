@@ -48,9 +48,7 @@ export default class StateManager {
             case globals.CONNECTIONSTATE.CONNECTED:
                 return {
                     state: "Connected",
-                    description: {
-                        tempData: this.printer.temperatureInfo,
-                    },
+                    description: null,
                 }
             case globals.CONNECTIONSTATE.CONNECTING:
                 return {
@@ -73,7 +71,6 @@ export default class StateManager {
                     state: "Printing",
                     description: {
                         printInfo: this.additionalStateInfo.printInfo,
-                        tempData: this.printer.temperatureInfo,
                     },
                 }
             case globals.CONNECTIONSTATE.FINISHING:
@@ -118,7 +115,7 @@ function getStateName(state: number) {
     switch (state) {
         case globals.CONNECTIONSTATE.CONNECTED:
             return "Connected"
-        case globals.CONNECTIONSTATE.CONNECTED:
+        case globals.CONNECTIONSTATE.CONNECTING:
             return "Connecting"
         case globals.CONNECTIONSTATE.DISCONNECTED:
             return "Disconnected"

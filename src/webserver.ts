@@ -9,7 +9,6 @@ import path from "path"
 import { readdir } from "fs"
 import Route from "./classes/route.js"
 import setupWizard from "./tools/setupWizard.js"
-import Setting from "./enums/setting.js"
 import NotificationType from "./enums/notificationType.js"
 
 export default class Webserver {
@@ -211,8 +210,6 @@ export default class Webserver {
             console.log("[WS][Event] Connection opened with " + socket.id)
 
             const currentState = this.stateManager.getCurrentStateInfo()
-            let settings = await this.stateManager.storage.getSettings()
-
             socket.sendJSON({
                 type: "ready",
                 content: {
@@ -247,7 +244,7 @@ export default class Webserver {
                     return
                 }
                 socket.sendJSON({
-                    type: "message_receive",
+                    type: "terminal_message",
                     content: this.messageStore,
                 })
             })
