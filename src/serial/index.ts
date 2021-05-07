@@ -495,12 +495,33 @@ export default class SerialConnectionManager {
         if (this.isCreating) {
             return Promise.reject(new Error("Already creating an instance"))
         }
+
+        this.stateManager.updateState(globals.CONNECTIONSTATE.CONNECTING, null)
         this.isCreating = true
-        return new Promise<void>((resolve, reject) => {
+        return new Promise<void>(async (resolve, reject) => {
+            let devices = await this.list()
+            if (
+                devices.filter(
+                    (device) => device.path.toLowerCase() == path.toLowerCase()
+                ).length == 0
+            ) {
+                this.isCreating = false
+                this.stateManager.updateState(globals.CONNECTIONSTATE.ERRORED, {
+                    errorDescription: "No device connected on selected path.",
+                })
+                return reject("No device connected on selected path.")
+            }
             if (!baudrate) {
                 this.getBaudrate(path).then((connectionInfo) => {
                     if (connectionInfo === false) {
                         this.isCreating = false
+                        this.stateManager.updateState(
+                            globals.CONNECTIONSTATE.ERRORED,
+                            {
+                                errorDescription:
+                                    "No baudrate combination worked.",
+                            }
+                        )
                         return reject(
                             new Error("No baudrate combination worked.")
                         )
@@ -509,6 +530,12 @@ export default class SerialConnectionManager {
                     this.isCreating = false
                     this.openConnection(path, connectionInfo, (err) => {
                         if (err) {
+                            this.stateManager.updateState(
+                                globals.CONNECTIONSTATE.ERRORED,
+                                {
+                                    errorDescription: err.message,
+                                }
+                            )
                             reject(err)
                         } else {
                             resolve()
@@ -528,6 +555,12 @@ export default class SerialConnectionManager {
                             connectionInfo,
                             (err: Error) => {
                                 if (err) {
+                                    this.stateManager.updateState(
+                                        globals.CONNECTIONSTATE.ERRORED,
+                                        {
+                                            errorDescription: err.message,
+                                        }
+                                    )
                                     reject(err)
                                 } else {
                                     resolve()
@@ -537,6 +570,12 @@ export default class SerialConnectionManager {
                     })
                     .catch((e) => {
                         this.isCreating = false
+                        this.stateManager.updateState(
+                            globals.CONNECTIONSTATE.ERRORED,
+                            {
+                                errorDescription: e,
+                            }
+                        )
                         reject(e)
                     })
             }
