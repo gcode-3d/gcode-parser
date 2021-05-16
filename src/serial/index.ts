@@ -280,7 +280,7 @@ export default class SerialConnectionManager {
                 this.stateManager.printer.capabilities.get(
                     "Cap:AUTOREPORT_TEMP"
                 ) == true &&
-                data.match(/T\d?:/i) != null
+                data.match(/((T\d?):([\d\.]+) ?\/([\d\.]+))+/) != null
             ) {
                 this.stateManager.parser.parseResponse("M105", [data], false)
             } else if (this.lastCommand.code != null) {

@@ -101,6 +101,9 @@ class Parser {
                         let tool = string.match(
                             /((T\d?):([\d\.]+) ?\/([\d\.]+))+/
                         )
+                        if (!tool) {
+                            return null
+                        }
                         return {
                             name: parseFloat(tool[2]),
                             currentTemp: parseFloat(tool[3]),

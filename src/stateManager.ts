@@ -83,7 +83,7 @@ export default class StateManager {
     updateState(state: number, extraDescription: stateInfo["description"]) {
         this.state = state
         this.additionalStateInfo = extraDescription
-        this.webserver.wss.clients.forEach((socket: ExtWebSocket) => {
+        this.webserver.wss?.clients.forEach((socket: ExtWebSocket) => {
             socket.sendJSON({
                 type: "state_update",
                 content: {
