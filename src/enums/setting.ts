@@ -9,5 +9,6 @@ enum Setting {
     DeviceDepth = "N_deviceDepth",
     DeviceHasHeatedBed = "B_deviceHB",
     DeviceHasHeatedChamber = "B_deviceHC",
+    ClientStoreTerminalAmount = "N_clientTerminalAmount",
 }
 export default Setting
