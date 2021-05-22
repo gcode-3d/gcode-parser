@@ -19,6 +19,7 @@
   },
   "homepage": "https://github.com/gcode-3d/gcode-parser#readme",
   "dependencies": {
+    "@sentry/node": "^6.4.1",
     "@types/express-fileupload": "^1.1.6",
     "@types/serialport": "^8.0.1",
     "@types/sqlite3": "^3.1.7",

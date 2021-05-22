@@ -10,5 +10,6 @@ enum Setting {
     DeviceHasHeatedBed = "B_deviceHB",
     DeviceHasHeatedChamber = "B_deviceHC",
     ClientStoreTerminalAmount = "N_clientTerminalAmount",
+    sentryDSN = "S_sentryDsn",
 }
 export default Setting

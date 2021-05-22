@@ -4,6 +4,7 @@ import LogPriority from "../enums/logPriority"
 import Setting from "../enums/setting"
 import globals from "../globals"
 import SerialConnectionManager from "../serial"
+import * as Sentry from "@sentry/node"
 
 export default new Route(
     "/api/connection/",
@@ -55,11 +56,7 @@ export default new Route(
             )
             return res.sendStatus(200)
         } catch (e) {
-            server.stateManager.storage.log(
-                LogPriority.Error,
-                "CONNECTION_ROUTE",
-                e
-            )
+            Sentry.captureException(e)
             res.sendStatus(500)
         }
     }

@@ -2,6 +2,7 @@ import Route from "../classes/route"
 import UserTokenResult from "../classes/UserTokenResult"
 import LogPriority from "../enums/logPriority"
 import globals from "../globals"
+import * as Sentry from "@sentry/node"
 
 export default new Route("/api/print/", "PUT", 0, async (req, res, server) => {
     if (!req.headers.authorization) {
@@ -46,20 +47,12 @@ export default new Route("/api/print/", "PUT", 0, async (req, res, server) => {
                     return res.sendStatus(201)
                 })
                 .catch((e) => {
-                    server.stateManager.storage.log(
-                        LogPriority.Error,
-                        "PRINT_START_ROUTE",
-                        e
-                    )
+                    Sentry.captureException(e)
                     res.sendStatus(500)
                 })
         })
         .catch((e) => {
-            server.stateManager.storage.log(
-                LogPriority.Error,
-                "PRINT_START_ROUTE_EXISTS",
-                e
-            )
+            Sentry.captureException(e)
             res.sendStatus(500)
         })
 })

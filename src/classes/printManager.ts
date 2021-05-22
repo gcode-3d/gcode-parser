@@ -11,6 +11,7 @@ import { Worker } from "worker_threads"
 import path from "path"
 import Setting from "../enums/setting"
 import NotificationType from "../enums/notificationType"
+import * as Sentry from "@sentry/node"
 
 export default class PrintManager {
     stateManager: StateManager
@@ -35,14 +36,7 @@ export default class PrintManager {
                     ? (settings.get(Setting.AdjustCorrectionFactor) as number)
                     : 0
             })
-            .catch((error) => {
-                console.error(error)
-                this.stateManager.storage.log(
-                    LogPriority.Error,
-                    "FETCH_CORRECTIONFACTOR",
-                    error
-                )
-            })
+            .catch(Sentry.captureException)
     }
 
     startPrint(fileName: string): Promise<void> {
@@ -125,15 +119,15 @@ export default class PrintManager {
                                 result.layerBeginEndMap,
                                 result.totalTimeTaken
                             )
-
-                            this.stateManager.storage.log(
-                                LogPriority.Debug,
-                                "PRINT_ANALYZED",
-                                "Estimated " +
+                            Sentry.addBreadcrumb({
+                                level: Sentry.Severity.Info,
+                                category: "print analysis",
+                                message:
+                                    "Estimated " +
                                     result.totalTimeTaken +
-                                    " seconds for print " +
-                                    file.name
-                            )
+                                    " seconds for print" +
+                                    file.name,
+                            })
                             if (this.analyzedResult.layerBeginEndMap.size > 0) {
                                 this.currentPrint.setPredictedFirstPrintLayer(
                                     Array.from(
@@ -147,11 +141,7 @@ export default class PrintManager {
                     })
                     .catch((e) => {
                         this.stateManager.throwError(e)
-                        this.stateManager.storage.log(
-                            LogPriority.Error,
-                            "GCODE_ANALYZE",
-                            e
-                        )
+                        Sentry.captureException(e)
                     })
             } catch (e) {
                 this.stateManager.throwError(e)
@@ -321,35 +311,29 @@ export default class PrintManager {
     private finishPrintActions(): Promise<void> {
         return new Promise(async (resolve) => {
             try {
-                await this.stateManager.storage.log(
-                    LogPriority.Debug,
-                    "PRINT_FINISH",
-                    `FILE: ${
-                        this.currentPrint.file.name
-                    } | CorrectionFactorUsed: ${
-                        this.correctionFactor
-                    } | CorrectionFactorNeeded: ${(
-                        1 -
-                        (this.analyzedResult.totalTimeTaken * 1000) /
-                            (new Date().getTime() -
-                                this.currentPrint.startTime.getTime())
-                    ).toFixed(2)}`
-                )
+                Sentry.addBreadcrumb({
+                    level: Sentry.Severity.Info,
+                    category: "print manager",
+                    message:
+                        "Finished printing file " + this.currentPrint.file.name,
+                    data: {
+                        file: this.currentPrint.file.name,
+                        fileSize: this.currentPrint.file.size,
+                        correctionFactor: this.correctionFactor,
+                        timeSpentMS:
+                            new Date().getTime() -
+                            this.currentPrint.startTime.getTime(),
+                        analyzedResult: this.analyzedResult?.totalTimeTaken,
+                        CorrectionFactorNeeded:
+                            1 -
+                            (this.analyzedResult.totalTimeTaken * 1000) /
+                                (new Date().getTime() -
+                                    this.currentPrint.startTime.getTime()),
+                    },
+                })
                 this.stateManager.webserver.sendNotification(
                     NotificationType.PrintState,
                     `Print finished: ${this.currentPrint.file.name}`
-                )
-                console.log(
-                    `FILE: ${
-                        this.currentPrint.file.name
-                    } | CorrectionFactorUsed: ${
-                        this.correctionFactor
-                    } | CorrectionFactorNeeded: ${(
-                        1 -
-                        (this.analyzedResult.totalTimeTaken * 1000) /
-                            (new Date().getTime() -
-                                this.currentPrint.startTime.getTime())
-                    ).toFixed(2)} `
                 )
             } catch (e) {
                 console.error
@@ -385,7 +369,8 @@ export default class PrintManager {
         }
         let currentDescription = this.stateManager.getCurrentStateInfo()
             .description as printDescription
-        currentDescription.printInfo.estEndTime = this.currentPrint.getPredictedEndTime()
+        currentDescription.printInfo.estEndTime =
+            this.currentPrint.getPredictedEndTime()
         this.stateManager.updateState(
             globals.CONNECTIONSTATE.PRINTING,
             currentDescription

@@ -62,17 +62,16 @@ export default class Storage {
             return
         })
     }
-
-    private createDefaultSettings(): Promise<void> {
-        function getType(char: string) {
-            if (char == "B_") {
-                return "boolean"
-            } else if (char == "N_") {
-                return "number"
-            } else {
-                return "string"
-            }
+    private getType(char: string) {
+        if (char == "B_") {
+            return "boolean"
+        } else if (char == "N_") {
+            return "number"
+        } else {
+            return "string"
         }
+    }
+    private createDefaultSettings(): Promise<void> {
         return new Promise((resolve, reject) => {
             this.db.run(
                 "INSERT INTO settings (id, type, value) VALUES " +
@@ -80,7 +79,11 @@ export default class Storage {
                         .map(() => "(?, ?, ?)")
                         .join(", "),
                 Object.values(Setting)
-                    .map((value) => [value, getType(value.slice(0, 2)), null])
+                    .map((value) => [
+                        value,
+                        this.getType(value.slice(0, 2)),
+                        null,
+                    ])
                     .flat(1),
                 (error: Error) => {
                     if (error) {
@@ -151,18 +154,34 @@ export default class Storage {
             if (!this.settings) {
                 await this.fetchSettings()
             }
+
             let statement = this.db.prepare(
                 "update settings set value = ? where id = ?"
             )
-            statement.run([value, key], async (result: any, error: Error) => {
+            if (!this.settings.has(key)) {
+                statement = this.db.prepare(
+                    "insert into settings (value, type, id) values(?,?,?)"
+                )
+                statement.run(
+                    [value, this.getType(key.slice(0, 2)), key],
+                    (_result: any, error: any) => handleResult(this, error)
+                )
+            } else {
+                statement.run([value, key], (_result: any, error: any) =>
+                    handleResult(this, error)
+                )
+            }
+
+            async function handleResult(storage: Storage, error: Error) {
                 if (error) {
-                    this.log(LogPriority.Error, "SETTINGS_SET", error.message)
+                    storage
+                        .log(LogPriority.Error, "SETTINGS_SET", error.message)
                         .then(() => reject(error))
                         .catch(reject)
                 }
-                this.settings.set(key, value)
+                storage.settings.set(key, value)
                 resolve()
-            })
+            }
         })
     }
 
@@ -393,32 +412,30 @@ export default class Storage {
                 }
                 Promise.all(
                     files
-                        .map(
-                            (file): Promise<File> => {
-                                return new Promise((resolve, reject) =>
-                                    fs.stat(
-                                        path.join(this.storageLocation, file),
-                                        (err, result) => {
-                                            if (err) {
-                                                if (err.code == "EPERM") {
-                                                    return resolve(null)
-                                                }
-                                                return reject(err)
+                        .map((file): Promise<File> => {
+                            return new Promise((resolve, reject) =>
+                                fs.stat(
+                                    path.join(this.storageLocation, file),
+                                    (err, result) => {
+                                        if (err) {
+                                            if (err.code == "EPERM") {
+                                                return resolve(null)
                                             }
-
-                                            resolve(
-                                                new File(
-                                                    file,
-                                                    result.birthtime,
-                                                    result.size,
-                                                    null
-                                                )
-                                            )
+                                            return reject(err)
                                         }
-                                    )
+
+                                        resolve(
+                                            new File(
+                                                file,
+                                                result.birthtime,
+                                                result.size,
+                                                null
+                                            )
+                                        )
+                                    }
                                 )
-                            }
-                        )
+                            )
+                        })
                         .filter((file) => file !== null)
                 )
                     .then(resolve)

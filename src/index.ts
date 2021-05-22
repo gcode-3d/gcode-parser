@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/node"
 import stateManager from "./stateManager.js"
 import Setting from "./enums/setting.js"
 
@@ -11,4 +12,8 @@ currentState.storage.getSettings().then((settings) => {
             .create(settings.get(Setting.DevicePath) as string, baud)
             .catch(console.error)
     }
+    Sentry.init({
+        dsn: settings.get(Setting.sentryDSN) as string,
+        environment: "SERVER_" + process.env.NODE_ENV,
+    })
 })

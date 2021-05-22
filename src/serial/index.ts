@@ -5,7 +5,7 @@ import globals from "../globals.js"
 import Readline from "@serialport/parser-readline"
 import ExtSerialPort from "../interfaces/serialport"
 import { v4 as uuid } from "uuid"
-import LogPriority from "../enums/logPriority"
+import * as Sentry from "@sentry/node"
 
 export default class SerialConnectionManager {
     stateManager: StateManager
@@ -141,6 +141,13 @@ export default class SerialConnectionManager {
                 return
             }
             if (data.startsWith("Error")) {
+                Sentry.addBreadcrumb({
+                    category: "serialConnection",
+                    message: "Printer reported error",
+                    data: {
+                        error: data,
+                    },
+                })
                 return console.error(data)
             }
             if (data.toLowerCase().startsWith("d: ")) {
@@ -155,12 +162,13 @@ export default class SerialConnectionManager {
                         this.lastCommand.callback
                     )
                 } else {
-                    await this.stateManager.storage.log(
-                        LogPriority.Warning,
-                        "RESEND_WARN",
-                        "Line number expected which isn't stored. Expected lineNr: " +
-                            resendCode
-                    )
+                    Sentry.addBreadcrumb({
+                        category: "serialConnection",
+                        message: "Line number expected which isn't stored",
+                        data: {
+                            expectedLineNr: resendCode,
+                        },
+                    })
                     console.warn(
                         "Line number expected which isn't stored. Expected lineNr: " +
                             resendCode

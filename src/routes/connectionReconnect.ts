@@ -2,6 +2,7 @@ import Route from "../classes/route"
 import UserTokenResult from "../classes/UserTokenResult"
 import LogPriority from "../enums/logPriority"
 import globals from "../globals"
+import * as Sentry from "@sentry/node"
 
 export default new Route(
     "/api/connection/",
@@ -40,11 +41,7 @@ export default new Route(
 
         server.stateManager.connectionManager.connection.close((err) => {
             if (err) {
-                server.stateManager.storage.log(
-                    LogPriority.Error,
-                    "CONNECTION_RECONNECT_CLOSE",
-                    err.message
-                )
+                Sentry.captureException(err)
                 return res.sendStatus(500)
             }
             server.stateManager.connectionManager
@@ -53,11 +50,7 @@ export default new Route(
                     server.stateManager.connectionManager.connection.baudRate
                 )
                 .catch((e) => {
-                    server.stateManager.storage.log(
-                        LogPriority.Error,
-                        "CONNECTION_RECONNECT_CREATE",
-                        e
-                    )
+                    Sentry.captureException(e)
                     return res.sendStatus(500)
                 })
         })

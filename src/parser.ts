@@ -1,4 +1,4 @@
-import LogPriority from "./enums/logPriority"
+import * as Sentry from "@sentry/node"
 import NotificationType from "./enums/notificationType"
 import Setting from "./enums/setting"
 import Manager from "./stateManager"
@@ -44,14 +44,7 @@ class Parser {
                         )
                     }
                 })
-                .catch((e) => {
-                    console.error(e)
-                    this.stateManager.storage.log(
-                        LogPriority.Error,
-                        "FETCHSETTINGS_NOTIFICATION",
-                        e.message || e
-                    )
-                })
+                .catch(Sentry.captureException)
         }
         switch (code) {
             case "M115":
