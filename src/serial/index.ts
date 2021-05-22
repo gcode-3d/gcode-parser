@@ -50,6 +50,7 @@ export default class SerialConnectionManager {
             this.connection.write(data)
             this.connection.drain(callback)
         }
+        this.connection.didError = false
         this.connection.on("open", () => {
             this.handleOpen(connectionInfo.capabilities)
             resultCallback(null)
@@ -57,6 +58,7 @@ export default class SerialConnectionManager {
         })
         this.connection.on("error", (e) => {
             console.error(e)
+            this.connection.didError = true
             if (!hasOpened) {
                 resultCallback(e)
             }
@@ -66,6 +68,10 @@ export default class SerialConnectionManager {
             })
         })
         this.connection.on("close", () => {
+            console.log("close", this.connection.didError)
+            if (this.connection.didError) {
+                return
+            }
             this.stateManager.updateState(
                 globals.CONNECTIONSTATE.DISCONNECTED,
                 {
@@ -218,9 +224,8 @@ export default class SerialConnectionManager {
                     this.stateManager.parser.parseLineNr(data) != null
                 ) {
                     let lineNr = this.stateManager.parser.parseLineNr(data)
-                    let commandInfo = this.stateManager.printManager.sentCommands.get(
-                        lineNr
-                    )
+                    let commandInfo =
+                        this.stateManager.printManager.sentCommands.get(lineNr)
                     const matches = commandInfo.command.match(
                         /\n?(?:N\d )?(G\d+|M\d+)/
                     )
