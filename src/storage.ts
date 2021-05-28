@@ -79,11 +79,21 @@ export default class Storage {
                         .map(() => "(?, ?, ?)")
                         .join(", "),
                 Object.values(Setting)
-                    .map((value) => [
-                        value,
-                        this.getType(value.slice(0, 2)),
-                        null,
-                    ])
+                    .map((value) => {
+                        if (value == Setting.sentryDSN) {
+                            return [
+                                value,
+                                this.getType(value.slice(0, 2)),
+                                "https://cd35379ff0fc45daa30a67bfe9aa8b36@o229745.ingest.sentry.io/5778789",
+                            ]
+                        } else {
+                            return [
+                                value,
+                                this.getType(value.slice(0, 2)),
+                                null,
+                            ]
+                        }
+                    })
                     .flat(1),
                 (error: Error) => {
                     if (error) {

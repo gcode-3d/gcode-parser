@@ -1,5 +1,6 @@
 import Route from "../classes/route"
 import UserTokenResult from "../classes/UserTokenResult"
+import * as Sentry from "@sentry/node"
 
 export default new Route(
     "/api/fetchDevices",
@@ -38,6 +39,7 @@ export default new Route(
                         return res.json(list)
                     })
                     .catch((e: any) => {
+                        Sentry.captureException(e)
                         console.error(e)
                     })
             } else {
@@ -45,6 +47,7 @@ export default new Route(
             }
         } catch (e) {
             console.error(e)
+            Sentry.captureException(e)
             res.sendStatus(500)
         }
     }

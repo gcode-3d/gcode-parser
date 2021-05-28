@@ -1,6 +1,7 @@
 import Route from "../classes/route"
 import UserTokenResult from "../classes/UserTokenResult"
 import { Stream } from "stream"
+import * as Sentry from "@sentry/node"
 
 export default new Route("/api/files", "PUT", 0, async (req, res, server) => {
     try {
@@ -43,11 +44,11 @@ export default new Route("/api/files", "PUT", 0, async (req, res, server) => {
                 return res.sendStatus(200)
             })
             .catch((e) => {
-                console.error(e)
+                Sentry.captureException(e)
                 res.sendStatus(500)
             })
     } catch (e) {
         console.error(e)
-        res.sendStatus(500)
+        Sentry.captureException(e)
     }
 })
