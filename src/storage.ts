@@ -427,7 +427,7 @@ export default class Storage {
                                         resolve(
                                             new File(
                                                 file,
-                                                result.birthtime,
+                                                result.mtime,
                                                 result.size,
                                                 null
                                             )
@@ -477,7 +477,7 @@ export default class Storage {
             stream.setEncoding("utf8")
             stream.pause()
             return resolve(
-                new File(name, fileStats.birthtime, fileStats.size, stream)
+                new File(name, fileStats.mtime, fileStats.size, stream)
             )
         })
     }
