@@ -1,5 +1,5 @@
 import globals from "../globals"
-import StateManager from "../stateManager"
+import StateManager from "./stateManager"
 import CommandInfo from "./CommandInfo"
 import File from "./file"
 import PrintInfo from "./printInfo"

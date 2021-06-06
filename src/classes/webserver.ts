@@ -3,13 +3,13 @@ import { v4 as uuid } from "uuid"
 import WebSocket from "ws"
 import { IncomingMessage, Server } from "http"
 import StateManager from "./stateManager.js"
-import ExtWebSocket from "./interfaces/websocket"
+import ExtWebSocket from "../interfaces/websocket"
 import { Socket } from "net"
 import path from "path"
 import { readdir } from "fs"
-import Route from "./classes/route.js"
-import setupWizard from "./tools/setupWizard.js"
-import NotificationType from "./enums/notificationType.js"
+import Route from "./route.js"
+import setupWizard from "../tools/setupWizard.js"
+import NotificationType from "../enums/notificationType.js"
 
 export default class Webserver {
     app: express.Application
@@ -48,10 +48,8 @@ export default class Webserver {
     }
 
     async createRoutes() {
-        console.log("Creating routes")
         if (process.env.NODE_ENV === "production") {
             if (this.isInSetupMode) {
-                console.log("Creating routes - setup")
                 let location = await setupWizard()
                 console.log(location)
                 this.app.use(express.static(location, { fallthrough: true }))

@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/node"
-import NotificationType from "./enums/notificationType"
-import Setting from "./enums/setting"
+import NotificationType from "../enums/notificationType"
+import Setting from "../enums/setting"
 import Manager from "./stateManager"
 
 class Parser {

@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/node"
-import stateManager from "./stateManager.js"
+import stateManager from "./classes/stateManager.js"
 import Setting from "./enums/setting.js"
 
 const currentState = new stateManager()

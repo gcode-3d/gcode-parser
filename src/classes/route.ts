@@ -1,5 +1,5 @@
 import { Request, Response } from "express"
-import Webserver from "../webserver"
+import Webserver from "./webserver"
 
 enum setupType {
     ROUTENOTFORSETUP = 0,

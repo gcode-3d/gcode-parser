@@ -1,5 +1,5 @@
 import SerialPort, { Stream } from "serialport"
-import StateManager from "../stateManager"
+import StateManager from "../classes/stateManager"
 import GLOBALS from "../globals.js"
 import globals from "../globals.js"
 import Readline from "@serialport/parser-readline"

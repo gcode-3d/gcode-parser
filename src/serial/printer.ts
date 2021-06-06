@@ -1,4 +1,4 @@
-import StateManager from "../stateManager"
+import StateManager from "../classes/stateManager"
 
 export default class Printer {
     stateManager: StateManager
@@ -37,9 +37,11 @@ export default class Printer {
                         switch (key) {
                             case "FIRMWARE_NAME":
                                 if (
-                                    !(this.capabilities.get(
-                                        "FIRMWARE_NAME"
-                                    ) as string)
+                                    !(
+                                        this.capabilities.get(
+                                            "FIRMWARE_NAME"
+                                        ) as string
+                                    )
                                         .toLowerCase()
                                         .includes("marlin")
                                 ) {

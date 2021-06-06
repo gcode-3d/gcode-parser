@@ -4,15 +4,15 @@ sqlite.verbose()
 const saltRounds = 10
 import bcrypt from "bcrypt"
 import crypto from "crypto"
-import UserTokenResult from "./classes/UserTokenResult.js"
-import File from "./classes/file.js"
-import LogPriority from "./enums/logPriority.js"
-import Setting from "./enums/setting.js"
-import LogEntry from "./classes/LogEntry.js"
+import UserTokenResult from "./UserTokenResult.js"
+import File from "./file.js"
+import LogPriority from "../enums/logPriority.js"
+import Setting from "../enums/setting.js"
+import LogEntry from "./LogEntry.js"
 import fs from "fs"
 import path from "path"
 import { Readable } from "stream"
-import NotificationType from "./enums/notificationType.js"
+import NotificationType from "../enums/notificationType.js"
 
 export default class Storage {
     private db: Database

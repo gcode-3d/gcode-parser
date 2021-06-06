@@ -1,13 +1,14 @@
 import Parser from "./parser.js"
 import Webserver from "./webserver.js"
-import globals from "./globals.js"
-import Printer from "./serial/printer.js"
+import globals from "../globals.js"
+import Printer from "../serial/printer.js"
 import Storage from "./storage.js"
-import ExtWebSocket from "./interfaces/websocket"
-import SerialConnectionManager from "./serial/index.js"
-import * as config from "../config.json"
-import PrintManager from "./classes/printManager.js"
-import stateInfo from "./interfaces/stateInfo"
+import ExtWebSocket from "../interfaces/websocket"
+import SerialConnectionManager from "../serial/index.js"
+import * as config from "../../config.json"
+import PrintManager from "./printManager.js"
+import stateInfo from "../interfaces/stateInfo"
+import PluginManager from "./PluginManager.js"
 
 export default class StateManager {
     state: number
@@ -19,6 +20,7 @@ export default class StateManager {
     parser: Parser
     webserver: Webserver
     additionalStateInfo: any
+    pluginManager: PluginManager
 
     constructor() {
         this.state = globals.CONNECTIONSTATE.DISCONNECTED
@@ -30,6 +32,7 @@ export default class StateManager {
         this.webserver = new Webserver(this)
         this.additionalStateInfo = {}
         this.printManager = new PrintManager(this)
+        this.pluginManager = new PluginManager(this)
     }
 
     createPrinter(capabilities: Map<string, boolean | string>): Promise<void> {
@@ -58,8 +61,8 @@ export default class StateManager {
                 return {
                     state: "Errored",
                     description: {
-                        errorDescription: this.additionalStateInfo
-                            .errorDescription,
+                        errorDescription:
+                            this.additionalStateInfo.errorDescription,
                     },
                 }
             case globals.CONNECTIONSTATE.PREPARING:
